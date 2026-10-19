@@ -1,4 +1,4 @@
-// Firey Station Tycoon v3: UI controller. Fictional game. Not affiliated with any fire service.
+// Firey Station Tycoon v4: UI controller. Fictional game. Not affiliated with any fire service.
 import * as D from './data.js';
 import * as G from './state.js';
 import { S } from './state.js';
@@ -9,6 +9,9 @@ import { runAction } from './action.js';
 import { Weather } from './weather.js';
 import { runMinigame } from './minigame.js';
 import { Backend } from './backend.js';
+import { TownLayer } from './town3d.js';
+import * as TD from './towndata.js';
+const T=G.T;
 const $=s=>document.querySelector(s), fmt=D.fmt, fmtTime=D.fmtTime;
 export const ICON = {
   coin:`<svg class="i-coin" viewBox="0 0 32 32"><use href="#ic-coin"/></svg>`,
@@ -24,7 +27,9 @@ let scene; const world=$('#world');
 await document.fonts.load('40px "Lilita One"').catch(()=>{});
 scene=new BaseScene(world,{ onSelect:id=>openBuilding(id), onTapEmpty:()=>closeSheet() });
 const weather=new Weather($('#wx'), world);
-window.FST={ S:()=>S, G, D, scene, Snd, Music, weather, openPanel:(v,a)=>openPanel(v,a), openBuilding:id=>openBuilding(id), handle:e=>handle(e) };
+const town=new TownLayer(scene,{ onSelect:id=>openTown(id), cellsOk:(it,i,j,ig)=>T.cellsOk(it,i,j,ig), blocked:T.blocked, buyable:T.buyable, onPlace:()=>renderPlaceBar(), onPlot:k=>plotTap(k) });
+town.S=S; town.drawGround(S); town.sync(S); scene.pan.set(1.5,9); scene.zoom=.85; scene.updateCam();
+window.FST={ S:()=>S, G, D, T, TD, town, openTown:id=>openTown(id), scene, Snd, Music, weather, openPanel:(v,a)=>openPanel(v,a), openBuilding:id=>openBuilding(id), handle:e=>handle(e) };
 
 /* ---------- labels over buildings ---------- */
 const labelsEl=$('#labels'); const labels={};
@@ -38,23 +43,93 @@ function renderLabel(id){ const i=G.bInfo(id), el=labels[id]; let h='';
   if(id==='quarters'&&S.sizzle.stored>=1) h=`<div class="bubble" data-collect>${ICON.coin}<b>${fmt(S.sizzle.stored)}</b></div>`+h;
   if(id==='comms'){ const n=S.calls.filter(c=>c.state==='open').length; if(n) h=`<div class="bubble pager" data-pager>🚨<b>${n}</b></div>`+h; }
   if(el._h!==h){ el.innerHTML=h; el._h=h; } }
-function placeLabels(){ for(const id of D.BUILD_ORDER){ const p=scene.screenPos(id); labels[id].style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-100%)`; } }
+function placeLabels(){ for(const id of D.BUILD_ORDER){ const p=scene.screenPos(id); labels[id].style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-100%)`; }
+  for(const [id,el] of tlabels){ if(!el._h){ el.style.display='none'; continue; } const p=town.screenPos(id); if(!p||!p.on){ el.style.display='none'; continue; } el.style.display=''; el.style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-100%)`; }
+  for(const [k,el] of plabels){ const p=town.plotScreen(k); el.style.display=p.on?'':'none'; el.style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-50%)`; } }
+/* ---------- v4: town labels (collect bubbles, timers, damage, alarms) ---------- */
+const tlabels=new Map(), plabels=new Map();
+function renderTownLabels(){ const seen=new Set();
+  for(const it of S.tw.items){ if(it.t==='road') continue; seen.add(it.id); let el=tlabels.get(it.id); if(!el){ el=document.createElement('div'); el.className='blabel tl'; el.dataset.tid=it.id; labelsEl.appendChild(el); tlabels.set(it.id,el);
+      el.addEventListener('click',e=>{ e.stopPropagation(); const id=el.dataset.tid; if(e.target.closest('[data-tcol]')) return townCollect(id,el); if(e.target.closest('[data-tcall]')){ const c=S.calls.find(c=>c.at===id&&c.state==='open'); if(c){ dispatchSel=G.autoTeam(c); openPanel('dispatch',c.id); Snd.pager(); } return; } openTown(id); }); }
+    const d=TD.TB[it.t]; let h=''; const call=S.calls.find(c=>c.at===it.id&&(c.state==='open'||c.state==='out'));
+    if(call) h+=`<div class="bubble pager" data-tcall>${call.state==='out'?'🚒':'🚨'}<b>${G.callType(call).icon}</b></div>`;
+    else if(it.dmg) h+=`<div class="bubble dmgb">🔨<b>Fix</b></div>`;
+    else if(T.ready(it)) h+=`<div class="bubble" data-tcol>${d.res==='mats'?'🧱':ICON.coin}<b>${fmt(Math.floor(it.store))}</b></div>`;
+    if(it.up) h+=`<div class="lbar"><i data-pstart="${it.up.start}" data-pend="${it.up.end}"></i><span data-end="${it.up.end}"></span></div>`;
+    if(el._h!==h){ el.innerHTML=h; el._h=h; } }
+  for(const [id,el] of tlabels) if(!seen.has(id)){ el.remove(); tlabels.delete(id); }
+  const want=town.mode==='expand'?T.buyable():[]; const pi=T.plotInfo(); const keys=new Set(want.map(p=>p.k));
+  for(const p of want){ let el=plabels.get(p.k); if(!el){ el=document.createElement('div'); el.className='blabel plot'; el.dataset.k=p.k; labelsEl.appendChild(el); plabels.set(p.k,el); el.addEventListener('click',e=>{ e.stopPropagation(); plotTap(el.dataset.k); }); }
+    const h=`<div class="ptag">🗺️ For sale<b>${ICON.coin}${fmt(pi.cost)}${pi.mats?` 🧱${pi.mats}`:''}</b></div>`; if(el._h!==h){ el.innerHTML=h; el._h=h; } }
+  for(const [k,el] of plabels) if(!keys.has(k)){ el.remove(); plabels.delete(k); } }
+function townCollect(id,el){ const r=T.collect(id); if(!r) return; S.stats.tcollect=(S.stats.tcollect||0)+1; Snd.collect(); flyIcon(el,r.mats?'🧱':'🪙',r.mats?'#mats':'#coins'); toast(r.mats?`🧱 +${r.mats} materials`:`+${fmt(r.coins)} coins`,'gold'); town.bounce(id); after(); }
+function flyIcon(fromEl,ic,to){ const a=fromEl.getBoundingClientRect(), b=($(to)||$('#coins')).getBoundingClientRect(); for(let i=0;i<5;i++){ const f=document.createElement('div'); f.className='fly'; f.textContent=ic; f.style.left=(a.left+a.width/2)+'px'; f.style.top=(a.top)+'px'; document.body.appendChild(f);
+  requestAnimationFrame(()=>{ f.style.transitionDelay=(i*60)+'ms'; f.style.transform=`translate(${b.left-a.left-a.width/2+(Math.random()*20-10)}px,${b.top-a.top}px) scale(.6)`; f.style.opacity='.2'; }); setTimeout(()=>f.remove(),1100); } }
+function plotTap(k){ if(!T.buyable().some(p=>p.k===k)) return toast('Pick a glowing plot next to your land'); const pi=T.plotInfo();
+  modal(`<h2>🗺️ Buy this land?</h2><p>A 4×4 plot of bush next to town. We'll clear it for building.</p><div class="rewards"><span>${C(pi.cost)}</span>${pi.mats?`<span>🧱 <b>${pi.mats}</b></span>`:''}</div>${pi.allowed?'':`<p class="note">Station level ${S.level} allows ${TD.plotsAllowed(S.level)} plots. Level up for more.</p>`}`,
+    [{label:'Buy land',cls:'green',fn:()=>{ if(err(T.buyPlot(k))) return; Snd.buildDone(); toast('🗺️ Land cleared! More room to build','gold'); town.drawGround(S); after(); }},{label:'Not now',cls:'blue'}]); }
+/* ---------- v4: placing buildings ---------- */
+function startPlace(t,moveId){ closePanel(); closeSheet(); const it=moveId?T.byId(moveId):null; const p={t,r:it?it.r:0,moveId,lv:it?Math.max(1,it.l):1};
+  if(it){ p.i=it.i; p.j=it.j; } else { const v=town.viewCell(); let best=null; for(let r=0;r<16&&!best;r++) for(let di=-r;di<=r&&!best;di++) for(let dj=-r;dj<=r;dj++){ if(Math.max(Math.abs(di),Math.abs(dj))!==r) continue; if(T.canPlace({t,r:0},v.i+di,v.j+dj)===null){ best=[v.i+di,v.j+dj]; break; } }
+    [p.i,p.j]=best||[v.i,v.j]; town.focusCell(p.i,p.j); }
+  document.body.classList.add('placing'); town.startPlace(p); renderPlaceBar(); Snd.pop(); }
+function renderPlaceBar(){ const p=town.place, el=$('#placebar'); if(!p){ el.classList.remove('on'); return; } const d=TD.TB[p.t]; const bi=T.buildInfo(p.t);
+  const cost=p.moveId?'Moving':(bi.badges?B(bi.badges):C(bi.cost[0]))+(bi.cost[1]?` 🧱${bi.cost[1]}`:'');
+  el.innerHTML=`<div class="pb-t">${d.icon} <b>${d.name}</b><small>${cost} · ${d.w}×${d.h}${p.ok?'':' · <span class="bad">can\'t go here</span>'}</small><small class="hint">Drag the building or tap a spot</small></div>
+   <div class="pb-b"><button class="pbtn red" data-act="pcancel">✕</button>${d.w!==d.h||!d.instant?`<button class="pbtn blue" data-act="prot">↻</button>`:''}<button class="pbtn green ${p.ok?'':'cant'}" data-act="pok">✓</button></div>`; el.classList.add('on'); }
+function endPlace(){ town.endPlace(); document.body.classList.remove('placing'); renderPlaceBar(); }
+function confirmPlace(){ const p=town.place; if(!p) return; if(!p.ok) return err('Can\'t build there: '+(T.canPlace({t:p.t,r:p.r},p.i,p.j,p.moveId)||'blocked'));
+  if(p.moveId){ if(err(T.move(p.moveId,p.i,p.j,p.r))) return; Snd.thud(); toast('📦 Moved','good'); endPlace(); after(); town.select(null); return; }
+  const [e,it]=T.place(p.t,p.i,p.j,p.r); if(err(e)) return; S.stats.tbuilt=(S.stats.tbuilt||0)+1; Snd.hammer(); const d=TD.TB[p.t];
+  toast(d.instant?`${d.icon} ${d.name} placed`:`👷 Building the ${d.name}`,'good');
+  if(d.instant&&d.cat!=='deco'||p.t==='road'||p.t==='gum'||p.t==='lamp'){ town.sync(S); const [w]=[1]; p.i+=w; town.updGhost(); renderPlaceBar(); after(); return; }
+  endPlace(); after(); }
+/* ---------- v4: town building sheet ---------- */
+let sheetTown=null;
+function openTown(id){ if(town.place||town.mode==='expand') return; sheetId=null; scene.select(null); sheetTown=id; town.select(id); Snd.pop(); renderSheet(); $('#sheet').classList.add('on'); }
+function fxLine(d,l){ const f=d.fx||{}; const out=[]; if(d.rate) out.push(`${d.res==='mats'?'🧱':ICON.coin}<b>${fmt(Math.round(TD.rateAt(Object.keys(TD.TB).find(k=>TD.TB[k]===d),l)))}</b>/hr`); if(d.pop) out.push(`👥 ${d.pop*l}`);
+  const lv=1+.5*(l-1); if(f.happy||d.happy) out.push(`😊 +${(((f.happy||0)*lv)+(d.happy||0)*l*.5).toFixed(1)}`); if(f.dmg) out.push(`🛡️ −${Math.round(f.dmg*lv*100)}% disaster damage`); if(f.xp) out.push(`⭐ +${Math.round(f.xp*lv*100)}% crew XP`);
+  if(f.trucks) out.push(`🚒 +${Math.floor(f.trucks*l+.01)} truck`); if(f.calls) out.push(`📟 +${Math.floor(f.calls*lv+.01)} pager slot`); if(f.water) out.push(`💧 +${Math.round(f.water*lv*100)}% hose tank`); if(f.heli) out.push('🚁 Water bomber'); if(f.haz) out.push(`☣️ spills ${Math.round(f.haz*lv*100)}% slower`); if(f.stable) out.push(`🩺 +${Math.round(f.stable*lv*100)}% patient time`); if(f.prod) out.push(`⚡ +${Math.round(f.prod*lv*100)}% production`);
+  return out.join(' · ')||d.desc; }
+function renderTownSheet(){ const i=T.info(sheetTown); if(!i){ closeSheet(); return; } const {it,d}=i; const el=$('#sheet .sbody'); let act='';
+  const call=S.calls.find(c=>c.at===it.id&&c.state==='open');
+  if(it.dmg){ const [c,m]=T.repairCost(it); act=`<div class="note">🔥 Damaged${G.dis()?' in the '+D.DISASTERS[G.dis().type].name.toLowerCase():''}. It has stopped working until it's fixed.</div><button class="gbtn green wide ${S.coins<c||S.materials<m?'cant':''}" data-act="trepair" data-id="${it.id}">🔨 Repair · ${C(c)} · 🧱 ${m}</button>`; }
+  else if(i.up) act=`<div class="pbar big"><i data-pstart="${it.up.start}" data-pend="${it.up.end}"></i><span>${it.l?`Upgrading to Lv ${it.l+1}`:'Under construction'} · <b data-end="${it.up.end}"></b></span></div>
+     <div class="row2"><button class="gbtn purple" data-act="tspeed" data-id="${it.id}">Finish now <span data-scost="${it.up.end}"></span></button><button class="gbtn orange" data-act="tad" data-id="${it.id}">📺 −30 min <small>DEMO</small></button></div>`;
+  else if(!i.next) act=d.max>1?`<div class="note gold">⭐ Max level.</div>`:'';
+  else if(i.next>i.maxL) act=`<div class="note">🔒 Lv ${i.next} needs station level ${i.next-1}. Level the station with call-outs, upgrades and comps.</div>`;
+  else act=`<button class="gbtn green wide ${S.coins<i.cost[0]||S.materials<i.cost[1]?'cant':''}" data-act="tup" data-id="${it.id}">Upgrade to Lv ${i.next} · ${C(i.cost[0])}${i.cost[1]?` · 🧱 ${i.cost[1]}`:''} · ⏱ ${fmtTime(i.time)}</button>`;
+  const prod=d.rate&&it.l?`<div class="stat"><span>${T.producing(it)?'Producing':'Paused'} ${d.res==='mats'?'🧱 materials':'coins'}</span><b>${fmt(Math.round(i.rate))}/hr · ${fmt(Math.floor(it.store||0))}/${fmt(Math.round(i.cap))}</b></div>${d.shop?`<div class="stat"><span>Customers (needs residents)</span><b>${Math.round(T.customers()*100)}%</b></div>`:''}`:'';
+  el.innerHTML=`<div class="shead"><div class="sicon">${d.icon}</div><div><div class="stitle">${d.name}${d.max>1?` <small>Lv ${it.l}</small>`:''}</div>${d.max>1?`<div class="stars">${'★'.repeat(it.l)}<span>${'★'.repeat(Math.max(0,d.max-it.l))}</span></div>`:''}</div><button class="xbtn" data-act="closesheet">✕</button></div>
+    <div class="sdesc">${d.desc}</div>${d.max>1||d.fx?`<div class="effect"><div><small>Now</small>${it.l?fxLine(d,it.l):'Being built'}</div>${i.next?`<div class="arrow">➜</div><div class="next"><small>Lv ${i.next}</small>${fxLine(d,i.next)}</div>`:''}</div>`:''}${prod}
+    ${call?`<button class="gbtn red wide" data-act="tcall" data-id="${call.id}">🚨 ${G.callType(call).name} here! Respond</button>`:''}${act}
+    <div class="row3">${T.ready(it)?`<button class="gbtn orange sm2" data-act="tcollect" data-id="${it.id}">Collect</button>`:''}<button class="gbtn blue sm2" data-act="tmove" data-id="${it.id}">✥ Move</button><button class="gbtn blue sm2" data-act="tlook" data-id="${it.id}">🔍 Look</button></div>`;
+  liveTimers(el); }
+/* ---------- v4: build menu ---------- */
+let buildCat='home';
+function pBuild(){ const cats=TD.CATS.map(([k,ic,n])=>`<button class="ctab ${k===buildCat?'on':''}" data-act="bcat" data-v="${k}">${ic}<small>${n}</small></button>`).join('');
+  let h=`<div class="ctabs">${cats}</div><div class="infobar">👷 Builders ${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()} free · 🧱 ${S.materials} · 👥 ${T.population()} residents · <button class="gbtn orange sm" data-act="collectall">Collect all</button></div>`;
+  if(buildCat==='land'){ const pi=T.plotInfo(); h+=`<div class="ccard"><div class="cic">🗺️</div><div class="cinfo"><div class="cname">Expand your land</div><div class="csub">You own ${S.tw.plots.length} plots (max ${TD.plotsAllowed(S.level)} at station level ${S.level}). Next plot ${C(pi.cost)}${pi.mats?` 🧱${pi.mats}`:''}</div></div><button class="gbtn green sm" data-act="expand">Choose plot</button></div>`; return ['🔨 Build',h]; }
+  h+='<div class="bgrid">'; for(const t of TD.TB_ORDER){ const d=TD.TB[t]; if(d.cat!==buildCat) continue; const bi=T.buildInfo(t); const cost=bi.badges?B(bi.badges):(bi.cost[0]?C(bi.cost[0]):'Free')+(bi.cost[1]?` 🧱${bi.cost[1]}`:'');
+    h+=`<button class="bcard ${bi.why?'lock':''}" data-act="bplace" data-id="${t}"><div class="bic">${d.icon}</div><b>${d.name}</b><small class="bsz">${d.w}×${d.h}${d.max>1?` · ${d.max} levels`:''}</small><small class="bfx">${fxLine(d,1)}</small><div class="bcost">${bi.why?`🔒 ${bi.why}`:cost}</div><span class="bcnt">${bi.n}/${bi.max}</span></button>`; }
+  return ['🔨 Build',h+'</div>']; }
 
 /* ---------- HUD ---------- */
 function hud(){
   $('#coins').textContent=fmt(S.coins); $('#badges').textContent=fmt(S.badges);
   $('#slvl').textContent=S.level; $('#sxp').style.width=Math.min(100,S.xp/G.stationXpNeed(S.level)*100)+'%';
   $('#trophies').innerHTML=`${ICON.trophy}<b>${S.trophies}</b><small>${D.LEAGUES[G.league()].name}</small>`;
-  $('#builders').innerHTML=`👷 <b>${S.builders-G.buildersBusy()}/${S.builders}</b>`;
+  $('#builders').innerHTML=`👷 <b>${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()}</b>`;
   const open=S.calls.filter(c=>c.state==='open').length; const cb=$('#btnCalls .count'); cb.textContent=open; cb.style.display=open?'':'none';
-  const out=S.calls.filter(c=>c.state==='out').length; $('#trucks').innerHTML=`🚒 <b>${G.freeAppliances()}/${D.appliances(G.bl('engine'))}</b>`;
-  $('#town').innerHTML=`😊 <b>${Math.round(S.town.happy)}%</b> 🧱 <b>${S.materials}</b>`;
+  const out=S.calls.filter(c=>c.state==='out').length; $('#trucks').innerHTML=`🚒 <b>${G.freeAppliances()}/${G.trucksTotal()}</b>`;
+  $('#town').innerHTML=`😊 <b>${Math.round(G.happyNow())}%</b> 🧱 <b>${S.materials}</b> 👥 <b>${T.population()}</b>`;
   disBanner();
   const q=G.currentQuest(); const qe=$('#quest');
   if(q){ const done=q.done(); const h=`<span class="qi">🎯</span><span class="qt">${q.text}</span>${done?`<button class="gbtn green sm" data-act="claim">Claim ${ICON.badge}${q.reward}</button>`:`<span class="qr">${ICON.badge}${q.reward}</span>`}`;
     if(qe._h!==h){ qe.innerHTML=h; qe._h=h; } qe.classList.toggle('ready',done); qe.style.display=''; } else qe.style.display='none';
   const r=S.rush, re=$('#rush'); if(r.active){ re.style.display=''; re.innerHTML=`🚨 RUSH HOUR <b>${r.done}/3</b> · <span data-end="${r.until}"></span> · 2x pay`; } else re.style.display='none';
   for(const id of D.BUILD_ORDER) renderLabel(id);
+  renderTownLabels();
 }
 function liveTimers(root=document){ const t=Date.now();
   root.querySelectorAll('[data-end]').forEach(el=>{ el.textContent=fmtTime((+el.dataset.end-t)/1000); });
@@ -76,9 +151,9 @@ function fakeAd(done){ let n=3; modal(`<h2>Sponsored</h2><div class="adbox"><spa
 
 /* ---------- building sheet ---------- */
 let sheetId=null;
-function openBuilding(id){ sheetId=id; scene.select(id); Snd.pop(); renderSheet(); $('#sheet').classList.add('on'); }
-function closeSheet(){ sheetId=null; scene.select(null); $('#sheet').classList.remove('on'); }
-function renderSheet(){ if(!sheetId) return; const id=sheetId, i=G.bInfo(id), def=D.BUILDINGS[id]; const el=$('#sheet .sbody');
+function openBuilding(id){ sheetTown=null; town.select(null); sheetId=id; scene.select(id); Snd.pop(); renderSheet(); $('#sheet').classList.add('on'); }
+function closeSheet(){ sheetId=null; sheetTown=null; town.select(null); scene.select(null); $('#sheet').classList.remove('on'); }
+function renderSheet(){ if(sheetTown) return renderTownSheet(); if(!sheetId) return; const id=sheetId, i=G.bInfo(id), def=D.BUILDINGS[id]; const el=$('#sheet .sbody');
   let act='';
   if(i.up) act=`<div class="pbar big"><i data-pstart="${i.up.start}" data-pend="${i.up.end}"></i><span>Upgrading to Lv ${i.l+1} · <b data-end="${i.up.end}"></b></span></div>
      <div class="row2"><button class="gbtn purple" data-act="speed" data-id="${id}">Finish now <span data-scost="${i.up.end}"></span></button><button class="gbtn orange" data-act="adspeed" data-id="${id}">📺 −5 min <small>DEMO</small></button></div>`;
@@ -99,7 +174,7 @@ function openPanel(v,arg){ const was=view; view=v; viewArg=arg; if(v!=='dispatch
   Music.setTrack(v==='compete'?'comp':'base'); }
 function closePanel(){ view=null; $('#panel').classList.remove('on'); Music.setTrack('base'); }
 function renderPanel(reset){ if(!view) return; const body=$('#panel .pbody'), st=reset?0:body.scrollTop; const title=$('#panel .ptitle');
-  const R={calls:pCalls,dispatch:pDispatch,crew:pCrew,crewDetail:pCrewDetail,compete:pCompete,leader:pLeader,shop:pShop,settings:pSettings,disaster:pDisaster,zone:pZone}[view];
+  const R={build:pBuild,calls:pCalls,dispatch:pDispatch,crew:pCrew,crewDetail:pCrewDetail,compete:pCompete,leader:pLeader,shop:pShop,settings:pSettings,disaster:pDisaster,zone:pZone}[view];
   const [t,h]=R(viewArg); title.innerHTML=t; body.innerHTML=h; body.scrollTop=st; liveTimers(body); }
 function pCalls(){ const open=S.calls.filter(c=>c.state==='open'), out=S.calls.filter(c=>c.state==='out');
   let h=`<div class="infobar">🚒 Free trucks <b>${G.freeAppliances()}/${D.appliances(G.bl('engine'))}</b> · 💺 ${D.seats(G.bl('engine'))} seats each · 👥 ${S.crew.filter(c=>!c.busy).length} crew free</div>`;
@@ -111,7 +186,8 @@ function pCalls(){ const open=S.calls.filter(c=>c.state==='open'), out=S.calls.f
   if(!open.length) h+=`<div class="empty">All quiet for now. Grab a cuppa. New calls arrive every ~${D.callEvery(G.bl('comms'))}s.</div>`;
   for(const c of open){ const t=G.callType(c); const free=S.crew.filter(m=>!m.busy);
     const chips=Object.entries(t.req).map(([r,n])=>roleChip(r,n,free.filter(m=>m.role===r).length>=n)).join('')||'<span class="chip ok">Anyone</span>';
-    h+=`<div class="ccard ${c.rush?'rush':''}" data-act="respond" data-id="${c.id}"><div class="cic">${t.icon}</div><div class="cinfo"><div class="cname">${t.name} <span class="tier">${'▮'.repeat(t.tier)}</span>${c.rush?' <span class="rtag">RUSH 2x</span>':''}</div>
+    const site=c.at&&T.byId(c.at);
+    h+=`<div class="ccard ${c.rush?'rush':''}" data-act="respond" data-id="${c.id}"><div class="cic">${t.icon}</div><div class="cinfo">${site?`<div class="csite">📍 Your ${TD.TB[site.t].name}${site.l>1?' Lv'+site.l:''}</div>`:''}<div class="cname">${t.name} <span class="tier">${'▮'.repeat(t.tier)}</span>${c.rush?' <span class="rtag">RUSH 2x</span>':''}</div>
       <div class="chips">${chips}</div><div class="csub">${ICON.coin}${fmt(Math.round(t.reward*G.payMult()*(c.rush?2:1)))} · ⭐${t.xp} XP · ⏱${fmtTime(t.time)} · expires <span data-end="${c.expires}"></span></div></div><div class="go">›</div></div>`; }
   return ['🚨 Call-outs',h]; }
 function pDispatch(id){ const call=S.calls.find(c=>c.id===id); if(!call||call.state!=='open'){ setTimeout(()=>openPanel('calls')); return ['🚨 Call-outs','']; }
@@ -173,6 +249,7 @@ function pShop(){ let h=`<div class="demo-banner">🧪 DEMO SHOP: nothing here i
 function pSettings(){ return ['⚙️ Settings',`
   <div class="setrow"><span>🎵 Music</span><button class="gbtn sm ${S.prefs.music?'green':'cant'}" data-act="tmusic">${S.prefs.music?'ON':'OFF'}</button></div>
   <div class="setrow"><span>🔔 Sound effects</span><button class="gbtn sm ${S.prefs.sfx?'green':'cant'}" data-act="tsfx">${S.prefs.sfx?'ON':'OFF'}</button></div>
+  <div class="setrow"><span>🌙 Day and night</span><button class="gbtn sm ${S.prefs.daynight!==false?'green':'cant'}" data-act="tdaynight">${S.prefs.daynight!==false?'ON':'OFF'}</button></div>
   <p class="fine">No sound on iPhone? Check the silent switch on the side of the phone.</p>
   <div class="stat"><span>Call-outs attended</span><b>${S.stats.calls} (${S.stats.success} saved)</b></div>
   <div class="stat"><span>Coins earned</span><b>${fmt(S.stats.earned)}</b></div>
@@ -188,6 +265,23 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('[data-act
   if(!['toggle','upgrade','dispatch','skill','gear','train','claim','comp'].includes(a)) Snd.tap();
   switch(a){
   case 'closesheet': closeSheet(); break;
+  case 'bcat': buildCat=b.dataset.v; renderPanel(true); break;
+  case 'bplace': { const bi=T.buildInfo(id); if(err(bi.why)) break; startPlace(id); break; }
+  case 'pcancel': endPlace(); break;
+  case 'prot': town.rotate(); Snd.pop(); break;
+  case 'pok': confirmPlace(); break;
+  case 'expand': closePanel(); town.setExpand(true); document.body.classList.add('placing'); $('#placebar').innerHTML=`<div class="pb-t">🗺️ <b>Expand land</b><small>Tap a glowing plot next to town</small></div><div class="pb-b"><button class="pbtn green" data-act="expanddone">Done</button></div>`; $('#placebar').classList.add('on'); scene.zoom=.6; scene.updateCam(); renderTownLabels(); break;
+  case 'expanddone': town.setExpand(false); document.body.classList.remove('placing'); $('#placebar').classList.remove('on'); renderTownLabels(); break;
+  case 'collectall': { const r=T.collectAll(); if(!r.coins&&!r.mats){ toast('Nothing to collect yet'); break; } Snd.collect(); toast(`Collected ${r.coins?'+'+fmt(r.coins)+' coins ':''}${r.mats?'+'+r.mats+' 🧱':''}`,'gold'); after(); break; }
+  case 'tup': { if(err(T.startUp(id))) break; Snd.hammer(); toast(`👷 Builder started on the ${TD.TB[T.byId(id).t].name}`,'good'); after(); break; }
+  case 'tspeed': { if(err(T.speedUpT(id))) break; Snd.speedUp(); handle(G.tick()); after(); break; }
+  case 'tad': fakeAd(()=>{ T.cutTimeT(id,1800); toast('⏩ 30 minutes skipped (demo ad)','gold'); handle(G.tick()); after(); }); break;
+  case 'tmove': { const it=T.byId(id); if(it) startPlace(it.t,id); break; }
+  case 'tlook': { town.focus(id,2.1); closeSheet(); toast('🔍 Pinch or scroll to zoom back out'); break; }
+  case 'tcollect': { const el=tlabels.get(id)||b; townCollect(id,el); break; }
+  case 'trepair': { const [er,done]=G.repairItem('tw',id); if(err(er)) break; Snd.hammer(); setTimeout(()=>Snd.buildDone(),350); toast('🔨 Repaired and back in business','gold'); after(); if(done) disasterDone(done); break; }
+  case 'tcall': { const c=S.calls.find(x=>x.id===id); if(c){ dispatchSel=G.autoTeam(c); openPanel('dispatch',id); Snd.pager(); } break; }
+  case 'tdaynight': S.prefs.daynight=S.prefs.daynight===false; town.dayKey=''; after(); break;
   case 'closepanel': closePanel(); break;
   case 'open': openPanel(b.dataset.v); break;
   case 'upgrade': { if(err(G.startUpgrade(id))) break; Snd.hammer(); toast(`👷 Builder started on the ${D.BUILDINGS[id].name}`,'good'); after(); break; }
@@ -227,7 +321,7 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('[data-act
   case 'sound': { const on=!(S.prefs.sfx||S.prefs.music); S.prefs.sfx=on; S.prefs.music=on; setAudioPrefs(S.prefs); after(); break; }
   }
 });
-['#btnCalls','#btnCrew','#btnComp','#btnShop'].forEach((s,i)=>$(s).addEventListener('click',()=>{ Snd.tap(); openPanel(['calls','crew','compete','shop'][i]); }));
+['#btnCalls','#btnCrew','#btnComp','#btnShop','#btnBuild'].forEach((s,i)=>$(s).addEventListener('click',()=>{ Snd.tap(); openPanel(['calls','crew','compete','shop','build'][i]); }));
 $('#btnSettings').addEventListener('click',()=>{ Snd.tap(); openPanel('settings'); });
 $('#btnSound').addEventListener('click',()=>{ Snd.tap(); const on=!(S.prefs.sfx||S.prefs.music); S.prefs.sfx=on; S.prefs.music=on; setAudioPrefs(S.prefs); after(); });
 $('#badgePlus').addEventListener('click',()=>{ Snd.tap(); openPanel('shop'); });
@@ -265,10 +359,11 @@ async function finishComp(comp,team,rivals,res){ Music.boost=0; const r=G.applyC
 /* ---------- v3: hands-on call-outs ---------- */
 const SCENE_VARIANT = { bin:'bin', car:'car', house:'house', unit:'unit', factory:'factory', cat:'tree', cliff:'cliff', tanker:'tanker', mva:'mva' };
 function enRoute(text, then){ const el=$('#enroute'); el.innerHTML=`<div class="er-card"><div class="er-truck">🚒</div><b>${text}</b><small>Lights and sirens...</small></div>`; el.classList.add('on'); setTimeout(()=>{ el.classList.remove('on'); then(); },1500); }
-function playCall(callId, ids){ const call=S.calls.find(c=>c.id===callId); if(!call) return; const t=G.callType(call); const team=G.teamOf(ids);
+function playCall(callId, ids){ const call=S.calls.find(c=>c.id===callId); if(!call) return; const t=G.callType(call); const team=G.teamOf(ids); const site=call.at&&T.byId(call.at); if(site){ town.focus(site.id,1.5); }
   const help=G.teamHelp(team, t.kind); const diff=Math.max(.7,Math.min(1.5,t.diff/Math.max(1,call.power||t.diff)));
-  Music.boost=14; enRoute(`En route: ${t.icon} ${t.name}`,()=>{ Snd.siren();
-    runAction($('#act'),{scene:t.scene,title:t.name,icon:t.icon,tier:t.tier,diff,help,variant:SCENE_VARIANT[t.id]||t.id},res=>{ Music.boost=0;
+  const variant=site&&t.scene==='hose'&&TD.SITE_VARIANT[site.t]?TD.SITE_VARIANT[site.t]:(SCENE_VARIANT[t.id]||t.id); const title=site?`${t.name} · ${TD.TB[site.t].name}`:t.name;
+  Music.boost=14; enRoute(`En route: ${t.icon} ${title}`,()=>{ Snd.siren();
+    runAction($('#act'),{scene:t.scene,title,icon:t.icon,tier:t.tier,diff,help,variant,site:site?TD.TB[site.t].sign||TD.TB[site.t].name.toUpperCase():null},res=>{ Music.boost=0;
       const r=G.finishAction(callId,res.stars); if(r) handle([{result:r}]); scene.returnTruck(); after(); }); }); }
 /* ---------- v3: disasters ---------- */
 let zoneSel=[];
@@ -287,7 +382,7 @@ function pDisaster(){ const a=G.dis(); if(!a){ return ['🌤️ All clear',`<div
   if(a.phase==='active'){ const open=a.zones.filter(z=>z.state==='open').length;
     h+=townMap(a)+`<div class="sect">Damaged zones · ${open} still need crews · tap a red pin or a card</div>`;
     for(const z of def.zones){ const st=G.zoneState(z.id); h+=`<div class="ccard zcard ${st.state}" data-act="${st.state==='open'?'zone':''}" data-id="${z.id}"><div class="cic">${z.id==='base'?'🚒':def.icon}</div><div class="cinfo"><div class="cname">${z.name}</div>
-      <div class="chips">${roleChip(z.lead,1,S.crew.some(m=>m.role===z.lead&&G.shiftsLeft(m)>0))}<span class="chip">🎮 ${D.SCENES[z.task].name}</span></div><div class="csub">${st.state==='open'?(z.base?'Your own station is hit!':`Protects: ${D.TOWN[z.town]?.name||''}`):st.state==='done'?'★'.repeat(st.stars)+' Sorted':'Lost'}</div></div>${st.state==='open'?'<div class="go">›</div>':''}</div>`; }
+      <div class="chips">${roleChip(z.lead,1,S.crew.some(m=>m.role===z.lead&&G.shiftsLeft(m)>0))}<span class="chip">🎮 ${D.SCENES[z.task].name}</span></div><div class="csub">${st.state==='open'?(z.base?'Your own station is hit!':a.items?.[z.id]?.length?`Damaged: ${a.items[z.id].map(id=>T.byId(id)).filter(Boolean).map(x=>TD.TB[x.t].icon+' '+TD.TB[x.t].name).join(', ')} · 3★ saves them`:`Protects: ${D.TOWN[z.town]?.name||''}`):st.state==='done'?'★'.repeat(st.stars)+' Sorted':'Lost'}</div></div>${st.state==='open'?'<div class="go">›</div>':''}</div>`; }
     h+=`<button class="gbtn wide sm2" data-act="standdown">🏳️ Stand down remaining zones</button>`; return [`${def.icon} ${def.name}`,h]; }
   const list=G.rebuildList(); h+=`<div class="rewards"><span>${C(a.rewards.coins)}</span><span>🧱 <b>${a.rewards.mats}</b></span><span>⭐ <b>${a.rewards.rep}</b> rep</span></div><div class="sect">Rebuild · you have ${C(S.coins)} and 🧱 ${S.materials}</div>`;
   if(!list.length) h+=`<div class="empty">Nothing was damaged. Your crews saved every street!</div><button class="gbtn green wide" data-act="disfinish">🎉 Celebrate with the town</button>`;
@@ -315,10 +410,12 @@ function disasterDone(r){ const def=D.DISASTERS[r.type]; Snd.win(); setTimeout((
 
 /* ---------- events from the game tick ---------- */
 function handle(evts){ for(const e of evts){
+  if(e.townBuilt){ const it=T.byId(e.townBuilt); if(it){ Snd.buildDone(); toast(`🎉 ${TD.TB[it.t].name} ${it.l>1?'is now level '+it.l:'is open'}!`,'gold'); setTimeout(()=>town.bounce(it.id),50); } }
   if(e.built){ Snd.buildDone(); toast(`🎉 ${D.BUILDINGS[e.built].name} is now level ${G.bl(e.built)}!`,'gold'); scene.bounce(e.built); }
-  if(e.newCall){ Snd.pager(); const t=G.callType(e.newCall); toast(`📟 New call: ${t.icon} ${t.name}`,''); }
+  if(e.newCall){ Snd.pager(); const t=G.callType(e.newCall); const at=e.newCall.at&&T.byId(e.newCall.at); toast(`📟 New call: ${t.icon} ${t.name}${at?` at your ${TD.TB[at.t].name}`:''}`,''); }
   if(e.result){ const r=e.result; r.ok?Snd.callWin():Snd.callFail(); if(!document.hidden) scene.returnTruck();
     toast(r.ok?`✅ ${r.type.name}: sorted! +${fmt(r.coins)} coins${r.badges?` +${r.badges} badge`:''}`:`😬 ${r.type.name} got away from us. +${fmt(r.coins)} coins`, r.ok?'good':'bad');
+    if(r.lost){ const it=T.byId(r.lost); if(it) setTimeout(()=>toast(`🔥 Your ${TD.TB[it.t].name} was damaged. Tap it to repair`,'bad'),700); }
     r.ups.forEach(([m,l])=>setTimeout(()=>{ toast(`⭐ ${m.name} reached Lv ${l}!`,'gold'); Snd.level(); },600)); }
   if(e.result?.stationUps?.length) setTimeout(()=>{ toast(`🏅 Station level ${S.level}! +5 badges`,'gold'); Snd.level(); },900);
   if(e.rushStart){ Snd.rushStart(); Music.boost=24; toast('🚨 RUSH HOUR! 3 jobs at double pay. Clear them all for +10 badges','bad'); }
@@ -328,7 +425,7 @@ function handle(evts){ for(const e of evts){
   if(e.rushLose){ Snd.lose(); Music.boost=0; toast(`Rush Hour over: ${e.done}/3. She'll be right next time!`); }
 } if(evts.length) after(true); }
 function after(fromTick){ hud(); syncScene(); syncWeather(); if(view&&!(fromTick&&view==='dispatch')) renderPanel(); renderSheet(); G.save(); }
-function syncScene(){ for(const id of D.BUILD_ORDER){ const i=G.bInfo(id); scene.setBuilding(id,i.l,{upgrading:!!i.up,locked:i.locked}); scene.setDamage(id,i.dmg&&i.l>0); } scene.setXmas?.(S.xmas); }
+function syncScene(){ town.sync(S); if(sheetTown) town.select(sheetTown); for(const id of D.BUILD_ORDER){ const i=G.bInfo(id); scene.setBuilding(id,i.l,{upgrading:!!i.up,locked:i.locked}); scene.setDamage(id,i.dmg&&i.l>0); } scene.setXmas?.(S.xmas); }
 function syncWeather(){ const a=G.dis(); const wx=a&&a.phase==='active'?D.DISASTERS[a.type].wx:null; weather.set(wx); scene.setMood(wx); if(!wx&&Music.boost===18) Music.boost=0; }
 function syncHeads(){ scene.setHeads(S.crew.slice(0,6).map(c=>({url:headURL(c.species,isElite(c)), svg:headSVG(c)}))); }
 function collectSizzle(){ const n=G.collectSizzle(); if(n){ Snd.collect(); toast(`🌭 Sausage sizzle takings: +${fmt(n)} coins`,'gold'); after(); } }
@@ -348,8 +445,8 @@ window.addEventListener('pagehide',()=>G.save());
 const away=(Date.now()-S.lastSeen)/1000;
 if(boot.fresh){
   modal(`<div class="logo">Firey<span>Station Tycoon</span></div><p>G'day, Boss! You've taken over <b>Snag Flats Station</b>: a tired engine bay, four keen Aussie animal Fireys and a sausage sizzle.</p>
-    ${boot.migrated?.fromV2?`<div class="note gold">Welcome to v3! Your station, coins and trophies came across, and your ${boot.migrated.crew} crew are now Aussie animal Fireys.</div>`:boot.migrated?`<div class="note gold">Thanks for playing v1! Your old progress is now <b>${fmt(boot.migrated.coins)} coins</b> and <b>${boot.migrated.badges} badges</b>.</div>`:''}
-    <p>Get hands-on at call-outs, save the town when disasters hit, upgrade your station, gear up your crew and beat rival stations at the comps.</p><p class="fine">Fictional game, original art. Not affiliated with any fire service.</p>`,
+    ${boot.migrated?.fromV3?`<div class="note gold">Welcome to v4! Your station, crew and trophies came across, and you now have a town to build around the station. Tap 🔨 Build.</div>`:boot.migrated?.fromV2?`<div class="note gold">Welcome to v3! Your station, coins and trophies came across, and your ${boot.migrated.crew} crew are now Aussie animal Fireys.</div>`:boot.migrated?`<div class="note gold">Thanks for playing v1! Your old progress is now <b>${fmt(boot.migrated.coins)} coins</b> and <b>${boot.migrated.badges} badges</b>.</div>`:''}
+    <p>Build your own town around the station, get hands-on at call-outs, save the town when disasters hit, upgrade your station, gear up your crew and beat rival stations at the comps.</p><p class="fine">Fictional game, original art. Not affiliated with any fire service.</p>`,
     [{label:'🚒 Start shift',fn:()=>{ Snd.unlock(); S.nextCallAt=Date.now()+1500; G.save(); }}],'welcome');
 } else { const evts=G.tick(); const res=evts.filter(e=>e.result).map(e=>e.result); const built=evts.filter(e=>e.built).map(e=>e.built);
   if(away>120 && (res.length||built.length||S.sizzle.stored>=1)){

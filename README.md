@@ -37,3 +37,11 @@ The shop and the "ad" are DEMO ONLY. Nothing is sold, no ad network is loaded, a
 - Easier competitions, with a difficulty curve by league and bigger crew-stat boosts.
 - Aussie animal crew: 12 species, each with a passive perk. Gear and rarity show on the portraits.
 - v2 saves migrate automatically. The old version is kept in v2/.
+
+## v4 — build your own town
+- Land grid next to the station; buy plots (Build ▸ Land ▸ Expand). 30 building types in 7 categories (homes, shops, production, services, fire, decorations, roads), each 1–10 levels with visibly changing models.
+- Placement ghost: drag, tap-to-move, rotate, green/red validity, confirm/cancel. Move any building later.
+- Builder huts = more concurrent builds (badges). Finish-now with badges or the DEMO ad (−30 min).
+- Collect bubbles for coins/🧱 materials; services raise happiness and cut disaster damage; fire buildings add trucks, calls, water, hazmat and a water-bombing helicopter in hands-on fires.
+- Calls spawn at your own buildings; failed calls and disasters damage them (smoke, rubble, tape) until repaired.
+- Day/night cycle (toggle in Settings), cars and walkers on your roads. Saves migrate from v3 (v3/ keeps the old build).

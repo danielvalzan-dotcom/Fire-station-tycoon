@@ -7,3 +7,6 @@
 ## v3
 - Animal crew portraits are drawn in code (SVG), in-house. Optional webp portrait files in assets/crew/ were AI-assisted image generations made for this project.
 - All fire services, places and stations are fictional. Not affiliated with any fire service.
+
+## v4
+- Town buildings, roads and props are original procedural low-poly geometry made in code (no third-party models). Emoji icons are the device system font. No fire-service names, logos or badges.

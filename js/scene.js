@@ -55,11 +55,11 @@ export class BaseScene {
     r.outputColorSpace=THREE.SRGBColorSpace; r.toneMapping=THREE.ACESFilmicToneMapping; r.toneMappingExposure=1.08;
     container.appendChild(r.domElement); r.domElement.style.touchAction='none';
     const s=this.scene=new THREE.Scene(); s.background=new THREE.Color('#8fd3ff'); s.fog=new THREE.Fog('#8fd3ff', 60, 110);
-    this.cam=new THREE.OrthographicCamera(-10,10,10,-10,0.1,200); this.camDist=50; this.zoom=1; this.pan=new THREE.Vector2(0,0);
+    this.cam=new THREE.OrthographicCamera(-10,10,10,-10,0.1,200); this.camDist=50; this.zoom=1; this.pan=new THREE.Vector2(0,0); this.bounds={u0:-3.5,u1:3.5,v0:-7,v1:7}; this.zMin=.45; this.zMax=2.4; this.extraWalkers=[];
     // lights
-    s.add(new THREE.HemisphereLight('#e8f6ff','#5d7a3a',1.25));
+    this.hemi=new THREE.HemisphereLight('#e8f6ff','#5d7a3a',1.25); s.add(this.hemi);
     const sun=this.sun=new THREE.DirectionalLight('#fff4dc',2.3); sun.position.set(9,24,15); sun.castShadow=true;
-    sun.shadow.mapSize.set(2048,2048); const sc=sun.shadow.camera; sc.left=-18; sc.right=18; sc.top=18; sc.bottom=-18; sc.near=1; sc.far=70; sun.shadow.bias=-0.0006; sun.shadow.normalBias=0.03; sun.shadow.radius=4;
+    sun.shadow.mapSize.set(2048,2048); const sc=sun.shadow.camera; sc.left=-22; sc.right=22; sc.top=22; sc.bottom=-22; sc.near=1; sc.far=90; sun.shadow.bias=-0.0006; sun.shadow.normalBias=0.03; sun.shadow.radius=4;
     s.add(sun); s.add(sun.target);
     this.buildings={}; this.anim=[]; this.trucksOut=[]; this.walkers=[]; this.t=0; this.selected=null; this.levels={};
     this.raycaster=new THREE.Raycaster(); this.ptr=new THREE.Vector2();
@@ -71,9 +71,10 @@ export class BaseScene {
   updateCam(){ const aspect=this.w/this.h; const halfW=7.4/this.zoom; const halfH=halfW/aspect;
     Object.assign(this.cam,{left:-halfW,right:halfW,top:halfH,bottom:-halfH}); this.cam.updateProjectionMatrix();
     // camera looks at target from iso direction; pan in screen-aligned u/v
-    const maxU=3.5, maxV=7; this.pan.x=Math.max(-maxU,Math.min(maxU,this.pan.x)); this.pan.y=Math.max(-maxV,Math.min(maxV,this.pan.y));
+    const B=this.bounds; this.pan.x=Math.max(B.u0,Math.min(B.u1,this.pan.x)); this.pan.y=Math.max(B.v0,Math.min(B.v1,this.pan.y));
     const p=uv(this.pan.x, this.pan.y+0.6); const tgt=new THREE.Vector3(p.x,0,p.z);
-    const dir=new THREE.Vector3(1,1.15,1).normalize(); this.cam.position.copy(tgt).addScaledVector(dir,this.camDist); this.cam.lookAt(tgt); }
+    const dir=new THREE.Vector3(1,1.15,1).normalize(); this.cam.position.copy(tgt).addScaledVector(dir,this.camDist); this.cam.lookAt(tgt);
+    if(this.sun){ this.sun.target.position.copy(tgt); this.sun.position.set(tgt.x+9,24,tgt.z+15); } this.camTarget=tgt; }
 
   buildWorld(){
     const s=this.scene;
@@ -91,8 +92,8 @@ export class BaseScene {
     [[0,-2,1.3,15.5]].forEach(([x,z,w,d])=>{ const p=rbox(w,.08,d,.04,pathM); at(p,x,0.12,z); slab.add(p); });
     [[-4.6],[-0.2],[ -9.4]].forEach(([z])=>{ const p=rbox(10.4,.08,1.0,.04,pathM); at(p,0,0.12,z+2.4); slab.add(p); });
     // road leaving the base (down the screen)
-    const road=box(3.8,.1,40,M('#4e535a',{shine:6})); road.rotation.y=Math.PI/4; const rp=uv(0,33); at(road,rp.x,-0.55,rp.z); road.receiveShadow=true; s.add(road);
-    for(let i=0;i<14;i++){ const dsh=box(.18,.02,1.1,M('#ffffff')); dsh.rotation.y=Math.PI/4; const dp=uv(0,15+i*2.6); at(dsh,dp.x,-0.48,dp.z); s.add(dsh); }
+    const road=box(3.8,.1,70,M('#4e535a',{shine:6})); road.rotation.y=Math.PI/4; const rp=uv(0,48); at(road,rp.x,-0.55,rp.z); road.receiveShadow=true; s.add(road);
+    for(let i=0;i<26;i++){ const dsh=box(.18,.02,1.1,M('#ffffff')); dsh.rotation.y=Math.PI/4; const dp=uv(0,15+i*2.6); at(dsh,dp.x,-0.48,dp.z); s.add(dsh); }
     // fence posts around slab edge
     const postM=M('#f4f1ea'), railM=M('#d9d3c7');
     for(const side of [-1,1]){ for(let i=0;i<14;i++){ const v=-13+i*2; const p=uv(side*6.05,v); s.add(at(rbox(.22,.7,.22,.06,postM),p.x,.35,p.z)); }
@@ -100,8 +101,7 @@ export class BaseScene {
     { const p=uv(-3.4,-13.6), q=uv(3.4,-13.6); for(let i=-5;i<=5;i++){ const pp=uv(i*1.1,-13.6); s.add(at(rbox(.22,.7,.22,.06,postM),pp.x,.35,pp.z)); } }
     // trees around
     const rnd=mulberry(7);
-    for(let i=0;i<120;i++){ const u=(rnd()*2-1)*24, v=(rnd()*2-1)*34; if(Math.abs(u)<7.4&&Math.abs(v)<15) continue; if(Math.abs(u)<3.2&&v>13) continue;
-      const p=uv(u,v); this.tree(p.x,p.z,0.7+rnd()*0.8,rnd); }
+    // v4: surrounding bush is instanced by the town layer
     // decorations inside
     for(const [u,v] of [[-5.3,-12.6],[5.3,-12.6],[-5.3,12.4],[5.3,9.5],[-5.3,4.2],[5.4,-1.8],[-0.2,-12.8]]){ const p=uv(u,v); this.tree(p.x,p.z,0.55,rnd); }
     this.flag(uv(-4.6,9.6));
@@ -117,7 +117,7 @@ export class BaseScene {
     const pts=[uv(0,-11),uv(0,-7),uv(0,-2.2),uv(0,2.6),uv(-2,3.3),uv(2,3.3),uv(0,-6.8),uv(-1.8,-7),uv(1.8,-7)];
     for(let i=0;i<5;i++){ const w=this.figure(roles[i]); const p=pts[i]; at(w,p.x,0.15,p.z); s.add(w); this.walkers.push({m:w,pts,i:i,next:pts[(i+1)%pts.length],sp:0.9+rnd()*0.5,wait:rnd()*2}); }
     // smoke puffs pool
-    this.puffs=[]; for(let i=0;i<26;i++){ const p=sph(.25,M('#ffffff',{op:.8,shine:0})); p.castShadow=false; p.visible=false; s.add(p); this.puffs.push({m:p,life:0}); }
+    this.puffs=[]; for(let i=0;i<70;i++){ const p=sph(.25,M('#ffffff',{op:.8,shine:0})); p.castShadow=false; p.visible=false; s.add(p); this.puffs.push({m:p,life:0}); }
   }
   tree(x,z,sc,rnd){ const t=new THREE.Group(); const trunk=cyl(.12*sc,.16*sc,.8*sc,M('#7a4b2a'),8); at(trunk,0,.4*sc,0); t.add(trunk);
     const greens=['#3f9d3a','#4caf50','#2e8b3e','#5cb85c']; const col=greens[Math.floor(rnd()*4)];
@@ -308,9 +308,9 @@ export class BaseScene {
     for(const dx of [-1.6,1.6]){ const c=new THREE.Mesh(new THREE.ConeGeometry(.16,.42,10),M('#ff6d00',{shine:60})); at(c,p.x+dx,.22,p.z+1.9); g.add(c); }
     this.scene.add(g); this.dmg[id]={g,pos:new THREE.Vector3(p.x,(this.buildings[id]?.top||2)+.3,p.z),t:Math.random()}; }
   setMood(type){ const bg={ash:'#d79a5f',rain:'#7f8d9b',wind:'#8c9ba6',hail:'#6e7c8b',fog:'#a3bf8c',shake:'#b9aa92'}[type]||'#8fd3ff';
-    this.scene.background.set(bg); this.scene.fog.color.set(bg); this.sun.intensity=type?1.5:2.3; this.mood=type||null; }
+    this.scene.background.set(bg); this.scene.fog.color.set(bg); this.sun.intensity=type?1.5:2.3; this.mood=type||null; this.town?.moodChanged?.(); }
   setHeads(list){ // list[i] = {url, svg}: painted head token if present, otherwise the SVG animal
-    this.walkers.forEach((w,i)=>{ const it=list[i%list.length]; if(!it) return; if(w.sprite){ w.m.remove(w.sprite); w.sprite.material.map?.dispose(); }
+    this.headList=list; this.walkers.concat(this.extraWalkers).forEach((w,i)=>{ const it=list[i%list.length]; if(!it) return; if(w.sprite){ w.m.remove(w.sprite); w.sprite.material.map?.dispose(); }
       w.m.children.forEach(ch=>{ if(ch.position.y>.72) ch.visible=false; });
       const mat=new THREE.SpriteMaterial({transparent:true,depthWrite:false}); const sp=new THREE.Sprite(mat); sp.scale.set(.66,.66,1); sp.position.set(0,.98,0); w.m.add(sp); w.sprite=sp;
       const useCanvas=img=>{ const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'); x.save(); x.beginPath(); x.arc(64,64,60,0,7); x.closePath(); x.clip(); x.drawImage(img,0,0,128,128); x.restore();
@@ -346,27 +346,33 @@ export class BaseScene {
       const on=Math.floor(t*8)%2; tr.m.userData.lights[0].material.emissiveIntensity=on?1.4:.1; tr.m.userData.lights[1].material.emissiveIntensity=on?.1:1.4;
       if(tr.t>=1){ this.scene.remove(tr.m); tr.done=true; } }
     this.trucksOut=this.trucksOut.filter(t=>!t.done);
+    this.town?.update(dt,t);
     this.renderer.render(this.scene,this.cam);
   }
   bindInput(){
     const el=this.renderer.domElement, pts=new Map(); let start=null, pinch0=null;
-    el.addEventListener('pointerdown',e=>{ e.preventDefault(); el.setPointerCapture?.(e.pointerId); pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    let hooked=false;
+    el.addEventListener('pointerdown',e=>{ e.preventDefault(); el.setPointerCapture?.(e.pointerId);
+      if(pts.size===0&&this.hook?.down?.(e.clientX,e.clientY)){ hooked=true; pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); return; }
+      pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(pts.size===1){ start={x:e.clientX,y:e.clientY,pan:this.pan.clone(),moved:false,t:performance.now()}; this.panTarget=null; this.vel=new THREE.Vector2(); this.dragging=true; }
       if(pts.size===2){ const [a,b]=[...pts.values()]; pinch0={d:Math.hypot(a.x-b.x,a.y-b.y),z:this.zoom}; if(start) start.moved=true; } },{passive:false});
-    el.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId)) return; const prev=pts.get(e.pointerId); pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
-      if(pts.size===2&&pinch0){ const [a,b]=[...pts.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y); this.zoom=Math.max(.8,Math.min(1.9,pinch0.z*d/pinch0.d)); this.updateCam(); return; }
+    el.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId)) return; if(hooked){ this.hook?.move?.(e.clientX,e.clientY); return; } const prev=pts.get(e.pointerId); pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(pts.size===2&&pinch0){ const [a,b]=[...pts.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y); this.zoom=Math.max(this.zMin,Math.min(this.zMax,pinch0.z*d/pinch0.d)); this.updateCam(); return; }
       if(!start) return; const dx=e.clientX-start.x, dy=e.clientY-start.y; if(!start.moved&&Math.hypot(dx,dy)>8) start.moved=true;
       if(start.moved){ const unit=(this.cam.right-this.cam.left)/this.w; const vScale=1/Math.sin(Math.atan2(1.15,Math.SQRT2));
         const nx=start.pan.x-dx*unit, ny=start.pan.y-dy*unit*vScale;
         const now=performance.now(); this.vel.set((nx-this.pan.x)/Math.max(.016,(now-(this.lastMv||now))/1000)*.5,(ny-this.pan.y)/Math.max(.016,(now-(this.lastMv||now))/1000)*.5); this.lastMv=now;
         this.pan.set(nx,ny); this.updateCam(); } });
-    const up=e=>{ if(!pts.has(e.pointerId)) return; pts.delete(e.pointerId); if(pts.size<2) pinch0=null;
+    const up=e=>{ if(!pts.has(e.pointerId)) return; if(hooked){ pts.delete(e.pointerId); hooked=false; this.hook?.up?.(e.clientX,e.clientY); return; } pts.delete(e.pointerId); if(pts.size<2) pinch0=null;
       if(pts.size===0){ this.dragging=false; if(start&&!start.moved&&e.type==='pointerup') this.tap(e.clientX,e.clientY); else if(this.vel&&performance.now()-(this.lastMv||0)>80) this.vel.set(0,0); start=null; } };
     el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
-    el.addEventListener('wheel',e=>{ e.preventDefault(); this.zoom=Math.max(.8,Math.min(1.9,this.zoom*(e.deltaY>0?.92:1.08))); this.updateCam(); },{passive:false});
+    el.addEventListener('wheel',e=>{ e.preventDefault(); this.zoom=Math.max(this.zMin,Math.min(this.zMax,this.zoom*(e.deltaY>0?.92:1.08))); this.updateCam(); },{passive:false});
   }
   tap(cx,cy){ const r=this.renderer.domElement.getBoundingClientRect(); this.ptr.set((cx-r.left)/r.width*2-1, -((cy-r.top)/r.height)*2+1);
-    this.raycaster.setFromCamera(this.ptr,this.cam); const hits=this.raycaster.intersectObjects(Object.values(this.buildings).map(b=>b.hit),false);
+    this.raycaster.setFromCamera(this.ptr,this.cam); if(this.town&&this.town.tap(this.raycaster,cx,cy)) return; const hits=this.raycaster.intersectObjects(Object.values(this.buildings).map(b=>b.hit),false);
     if(hits.length){ this.onSelect(hits[0].object.userData.bid); } else this.onTapEmpty(); }
 }
 function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+export { THREE, M, rbox, box, cyl, sph, at, textTex, stripeTex, hazardTex, windowRow, uv, mulberry };

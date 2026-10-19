@@ -38,7 +38,7 @@ export function runAction(root, o, onDone){
     if(!E.over){ E.t+=dt; S.update(dt); if(E.t>=E.T&&!E.over) E.end(S.timeout?S.timeout():0, 'Out of time.'); }
     for(const p of E.parts){ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=300*dt; p.life-=dt; } E.parts=E.parts.filter(p=>p.life>0);
     for(const p of E.pops){ p.life-=dt*1.1; p.y-=30*dt; } E.pops=E.pops.filter(p=>p.life>0);
-    g.clearRect(0,0,W,H); S.draw(g);
+    g.clearRect(0,0,W,H); S.draw(g); if(E.heliK!=null&&E.heliK<1) heliPass(g,E,E.heliK,W);
     for(const p of E.parts){ g.globalAlpha=clamp(p.life*2,0,1); g.fillStyle=p.col; g.beginPath(); g.arc(p.x,p.y,p.r,0,7); g.fill(); } g.globalAlpha=1;
     g.textAlign='center'; g.font='22px "Lilita One", system-ui'; g.lineWidth=5; g.strokeStyle='rgba(0,0,0,.7)';
     for(const p of E.pops){ g.globalAlpha=clamp(p.life*1.5,0,1); g.strokeText(p.text,p.x,p.y); g.fillStyle=p.col; g.fillText(p.text,p.x,p.y); } g.globalAlpha=1;
@@ -77,6 +77,9 @@ function car(g,x,y,w,col='#2e86de',crushed=0){ const h=w*.36; box(g,x,y-h,w,h,co
   for(const wx of [.2,.8]){ g.fillStyle='#222'; g.beginPath(); g.arc(x+w*wx,y,h*.36,0,7); g.fill(); g.fillStyle='#999'; g.beginPath(); g.arc(x+w*wx,y,h*.14,0,7); g.fill(); } }
 
 /* ---------- scenes ---------- */
+function heliPass(g,E,k,W){ if(k<0||k>1) return; const x=-80+(W+160)*k, y=E.top+95; g.save(); g.translate(x,y); g.fillStyle='#d32f2f'; g.beginPath(); g.ellipse(0,0,34,16,0,0,7); g.fill(); g.fillRect(-70,-4,40,8); g.fillStyle='#bfe8ff'; g.beginPath(); g.ellipse(16,-3,12,9,0,0,7); g.fill();
+  g.strokeStyle='#222'; g.lineWidth=4; g.beginPath(); const r=Math.sin(E.t*60)*44; g.moveTo(-r,-22); g.lineTo(r,-22); g.stroke(); g.fillStyle='#ff9800'; g.fillRect(-8,26,16,14); g.strokeStyle='#333'; g.lineWidth=1.5; g.beginPath(); g.moveTo(0,16); g.lineTo(0,26); g.stroke();
+  if(k>.38&&k<.62){ g.fillStyle='rgba(180,225,255,.55)'; g.beginPath(); g.moveTo(-10,40); g.lineTo(10,40); g.lineTo(60,E.H); g.lineTo(-60,E.H); g.fill(); } g.restore(); }
 const SCENE_IMPL = {
 /* HOSE: aim and hold, with spread, wind, water tank, heat, hidden hotspots and people to rescue */
 hose(E,o,h){ const W=()=>E.W, H=()=>E.H; const v=o.variant||'house'; const k=clamp(o.diff||1,.7,1.6);
@@ -94,6 +97,7 @@ hose(E,o,h){ const W=()=>E.W, H=()=>E.H; const v=o.variant||'house'; const k=cla
     down(p){ for(const pe of L.people){ if(pe.saved>=1) continue; const q=P(pe); if(dist(p.x,p.y,q.x,q.y)<34){ const near=L.flames.some(f=>f.hp>.25&&dist(P(f).x,P(f).y,q.x,q.y)<110);
           if(near){ E.pop('Too hot! Knock down the fire near them',q.x,q.y-30,'#ffab91'); Snd.no(); } else { pe.saved+=.34; Snd.hit(1); if(pe.saved>=1){ E.pop('RESCUED!',q.x,q.y-30,'#a5ff8a'); Snd.cheer(1,.6); E.burst(q.x,q.y,'#fff',12); } } return; } } },
     update(dt){ L.wt-=dt; if(L.wt<=0){ L.wt=rand(4,7); L.wind=clamp(L.wind+rand(-1.2,1.2),-1.4,1.4); }
+      if(h.heli&&!L.heli&&E.t>4) L.heli={t:0}; if(L.heli&&L.heli.t<3.2){ L.heli.t+=dt; E.heliK=L.heli.t/3.2; Snd.setSpray(L.heli.t>1.2&&L.heli.t<2?2:0); if(!L.heli.drop&&L.heli.t>1.5){ L.heli.drop=true; L.flames.forEach(f=>{ if(f.hp>0) f.hp=Math.max(0,f.hp-.5); }); E.pop('WATER BOMBER!',W()/2,E.top+150,'#b3e5fc'); Snd.splash(); } }
       const spraying=E.ptr.down&&L.back<=0&&L.tank>0.02&&E.ptr.y<gy()+20; L.spray=spraying; Snd.setSpray(spraying?3:0);
       if(spraying){ L.tank=Math.max(0,L.tank-dt*.085/h.water); const n=nozzle(); const ang=Math.atan2(E.ptr.y-n.y,E.ptr.x-n.x); const spd=520*h.pressure;
         for(let i=0;i<4;i++){ const a=ang+rand(-.09,.09)/h.pressure; L.drops.push({x:n.x,y:n.y,vx:Math.cos(a)*spd*rand(.85,1.05),vy:Math.sin(a)*spd*rand(.85,1.05),life:1.2,tx:E.ptr.x,ty:E.ptr.y}); } }
@@ -298,7 +302,8 @@ firebreak(E,o,h){ const W=()=>E.W, H=()=>E.H; const T=Math.round(40+(o.tier||1)*
   const hs=Array.from({length:G.houses},()=>({lost:false}));
   return { T,
     down(p){ rake(p); G.last=p; }, move(p){ if(G.last&&dist(p.x,p.y,G.last.x,G.last.y)>cw()*.5){ rake(p); G.last=p; } }, up(){ G.last=null; },
-    update(dt){ G.stam=Math.min(1,G.stam+dt*.12); G.spreadT-=dt; if(Math.random()<dt*.15) G.wind=clamp(G.wind+rand(-.5,.5),-.9,.9);
+    update(dt){ if(h.heli&&!G.heli&&E.t>5) G.heli={t:0}; if(G.heli&&G.heli.t<3.2){ G.heli.t+=dt; E.heliK=G.heli.t/3.2; if(!G.heli.drop&&G.heli.t>1.5){ G.heli.drop=true; let n=0; G.cells.forEach(k=>{ if(k.s==='fire'&&k.c>=3&&k.c<=6){ k.s='wet'; n++; } }); E.pop(n?'WATER BOMBER!':'Bomber standing by',W()/2,E.top+150,'#b3e5fc'); Snd.splash(); } }
+      G.stam=Math.min(1,G.stam+dt*.12); G.spreadT-=dt; if(Math.random()<dt*.15) G.wind=clamp(G.wind+rand(-.5,.5),-.9,.9);
       if(G.spreadT<=0){ G.spreadT=.9/(1+(o.tier||1)*.12)*h.power; const fires=G.cells.filter(k=>k.s==='fire'); Snd.crackle();
         for(const f of fires){ f.b+=1; for(const [dc,dr,w] of [[0,1,.55],[1,0,.22+G.wind*.3],[-1,0,.22-G.wind*.3],[0,-1,.08],[1,1,.12+G.wind*.15],[-1,1,.12-G.wind*.15]]){ const n=cell(f.c+dc,f.r+dr); if(n&&n.s==='grass'&&Math.random()<w) n.s='fire'; }
           if(f.b>=4) f.s='burnt'; }

@@ -1,6 +1,10 @@
-// Firey Station Tycoon v3: game state and rules. No DOM in here, so it can be unit-tested or moved server-side later.
+// Firey Station Tycoon v4: game state and rules. No DOM in here, so it can be unit-tested or moved server-side later.
 import * as D from './data.js';
-const KEY='fst_v3_save', V2_KEY='fst_v2_save', OLD_KEY='fireyStationTycoon_v1';
+import * as T from './town.js';
+import { TB, ZONE_CATS as TD_ZONE } from './towndata.js';
+const TDB=t=>TB[t];
+export { T };
+const KEY='fst_v4_save', V3_KEY='fst_v3_save', V2_KEY='fst_v2_save', OLD_KEY='fireyStationTycoon_v1';
 export let S=null;
 const now=()=>Date.now();
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -8,7 +12,7 @@ const pick=a=>a[Math.floor(Math.random()*a.length)];
 let uid=1; const newId=p=>p+'_'+Date.now().toString(36)+'_'+(uid++)+Math.random().toString(36).slice(2,5);
 
 export function newState(){
-  const s={ v:3, created:now(), lastSeen:now(), playerId:newId('p'), stationName:'Snag Flats Station',
+  const s={ v:4, created:now(), lastSeen:now(), playerId:newId('p'), stationName:'Snag Flats Station',
     coins:400, badges:30, level:1, xp:0,
     buildings:{ engine:{l:1}, tower:{l:1}, gym:{l:0}, hazmat:{l:0}, rescue:{l:0}, quarters:{l:1}, comms:{l:1} },
     builders:1, crew:[], calls:[], nextCallAt:now()+4000, callSeq:0,
@@ -21,11 +25,14 @@ export function newState(){
 
 export function load(){
   let raw=null; try{ raw=localStorage.getItem(KEY); }catch(e){}
-  if(raw){ try{ const d=JSON.parse(raw); if(d&&d.v===3){ S=d; repair(); return {fresh:false}; } }catch(e){ console.warn('v3 save unreadable, starting fresh', e); } }
+  if(raw){ try{ const d=JSON.parse(raw); if(d&&d.v===4){ S=d; repair(); return {fresh:false}; } }catch(e){ console.warn('v4 save unreadable, starting fresh', e); } }
+  // v3 -> v4: keep everything, add a starter town around the station
+  try{ const v3=JSON.parse(localStorage.getItem(V3_KEY)||'null');
+    if(v3&&v3.v===3&&Array.isArray(v3.crew)){ S=v3; S.v=4; S.migratedFrom='v3'; repair(); save(); return {fresh:true, migrated:{fromV3:true, crew:S.crew.length}}; } }catch(e){ console.warn('v3 save unreadable', e); }
   // v2 -> v3: keep everything, give each crew member an animal species
   try{ const v2=JSON.parse(localStorage.getItem(V2_KEY)||'null');
-    if(v2&&v2.v===2&&Array.isArray(v2.crew)){ S=v2; S.v=3; S.migratedFrom='v2'; repair(); save(); return {fresh:true, migrated:{fromV2:true, crew:S.crew.length}}; } }catch(e){ console.warn('v2 save unreadable', e); }
-  newState(); let migrated=null;
+    if(v2&&v2.v===2&&Array.isArray(v2.crew)){ S=v2; S.v=4; S.migratedFrom='v2'; repair(); save(); return {fresh:true, migrated:{fromV2:true, crew:S.crew.length}}; } }catch(e){ console.warn('v2 save unreadable', e); }
+  newState(); T.ensureTown(); let migrated=null;
   try{ const old=JSON.parse(localStorage.getItem(OLD_KEY)||'null');
     if(old&&typeof old==='object'){ const earned=+old.stats?.earned||+old.coins||0;
       migrated={ coins:Math.min(6000,Math.round(250+Math.sqrt(Math.max(0,earned))*25)), badges:Math.min(150,25+(old.stations||1)*10+(old.stats?.rushWins||0)*5), fromLevel:old.level||1 };
@@ -39,16 +46,18 @@ function repair(){ const def=defaults();
   S.town=Object.assign({happy:75,rep:0,damaged:{}},S.town||{}); S.dis=Object.assign({next:now()+6*60e3,active:null,count:0,seen:{}},S.dis||{});
   // an action scene that was open when the app closed resolves on the timer instead
   S.calls.forEach(c=>{ if(c.state==='out'&&c.action){ c.action=false; c.end=now()+5000; } });
+  T.ensureTown();
   // anything that was mid-flight when the app closed is resolved by tick()
 }
-function defaults(){ const keep=S; const d=newState(); S=keep; return d; }
+function defaults(){ const keep=S; const d=newState(); S=keep; delete d.tw; return d; }
 export function save(){ if(!S) return; S.lastSeen=now(); try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
 export function resetAll(){ try{ localStorage.removeItem(KEY); }catch(e){} newState(); save(); }
 
 /* ---------- station level ---------- */
 export const stationXpNeed = L => Math.round(40*Math.pow(1.45,L-1));
 export function addStationXP(n){ S.xp+=n; const ups=[]; while(S.xp>=stationXpNeed(S.level)){ S.xp-=stationXpNeed(S.level); S.level++; S.badges+=5; ups.push(S.level); } return ups; }
-export const payMult = () => (1 + 0.05*(S.level-1)) * (0.9 + 0.2*(S.town?.happy??75)/100);
+export const happyNow = () => Math.max(0,Math.min(100,(S.town?.happy??75)+(S.tw?T.fx().happy:0)));
+export const payMult = () => (1 + 0.05*(S.level-1)) * (0.9 + 0.2*happyNow()/100);
 
 /* ---------- buildings ---------- */
 export const bl = id => { const b=S.buildings[id]; return b.dmg?Math.max(0,b.l-1):b.l; };
@@ -58,10 +67,11 @@ export function bInfo(id){ const b=S.buildings[id], def=D.BUILDINGS[id]; const u
   const maxByStation = Math.min(def.max, S.level+1);
   return { id, def, l:b.l, up, dmg, remaining: up?(up.end-now())/1000:0, total: up?up.total:0, locked, unlockAt:def.unlock||1,
     maxed:b.l>=def.max, capped:b.l>=maxByStation&&b.l<def.max, cost:b.l<def.max?D.buildCost(id,b.l):null, time:b.l<def.max?D.buildTime(id,b.l):null }; }
-export const buildersBusy = () => D.BUILD_ORDER.filter(id=>S.buildings[id].up).length;
+export const buildersBusy = () => T.busy();
+export const totalBuilders = () => T.totalBuilders();
 export function startUpgrade(id){ const i=bInfo(id);
   if(i.dmg) return 'Damaged in the disaster. Repair it first'; if(i.up) return 'Already upgrading'; if(i.maxed) return 'Max level'; if(i.locked) return `Unlocks at station level ${i.unlockAt}`;
-  if(i.capped) return `Reach station level ${i.l} first`; if(buildersBusy()>=S.builders) return 'Your builder is busy';
+  if(i.capped) return `Reach station level ${i.l} first`; if(buildersBusy()>=totalBuilders()) return 'All builders are busy';
   if(S.coins<i.cost) return 'Not enough coins';
   S.coins-=i.cost; S.buildings[id].up={start:now(),end:now()+i.time*1000,total:i.time}; return null; }
 export const speedCost = id => { const i=bInfo(id); return i.up?D.badgeSpeedCost(i.remaining):0; };
@@ -91,7 +101,7 @@ export const fx = c => (D.SPECIES[c.species]||D.SPECIES.roo).fx;
 export function memberPower(c, skills, kind){ let p=c.lvl*2; for(const k of skills) if(c.sk[k]) p+=c.sk[k]*5; const pw=kind?(fx(c).power?.[kind]||0):0; return p*(1+gearBonus(c)/100)*(1+pw); }
 const teamFx = (team,k) => team.reduce((a,m)=>a+(fx(m)[k]||0),0);
 export function overallPower(c){ return Math.round(memberPower(c, D.ROLES[c.role].skills.map(s=>s[0]))); }
-export function addCrewXP(c,n){ const ups=[]; if(c.lvl>=crewCap()) { c.xp=Math.min(c.xp+n, D.xpNeed(c.lvl)-1); return ups; }
+export function addCrewXP(c,n){ n=Math.round(n*(1+(S.tw?T.fx().xp:0))); const ups=[]; if(c.lvl>=crewCap()) { c.xp=Math.min(c.xp+n, D.xpNeed(c.lvl)-1); return ups; }
   c.xp+=n; while(c.xp>=D.xpNeed(c.lvl) && c.lvl<crewCap()){ c.xp-=D.xpNeed(c.lvl); c.lvl++; c.sp++; ups.push(c.lvl); } return ups; }
 export const trainCostFor = c => D.trainCost(c.lvl, bl('tower'));
 export function train(c){ if(c.busy) return ['They are out on a job']; if(c.lvl>=crewCap()) return [`Level cap ${crewCap()}. Upgrade the Training Tower`];
@@ -108,14 +118,16 @@ export function openCrate(){ const opts=[]; for(const c of S.crew) for(const [k]
 
 /* ---------- calls ---------- */
 export const maxTier = () => Math.min(4, 1+Math.floor(bl('comms')/2));
-export const freeAppliances = () => D.appliances(bl('engine')) - S.calls.filter(c=>c.state==='out').length;
+export const trucksTotal = () => D.appliances(bl('engine')) + (S.tw?T.fx().trucks:0);
+export const freeAppliances = () => trucksTotal() - S.calls.filter(c=>c.state==='out').length;
 function callAllowed(t){ if(t.tier>maxTier()) return false; if(t.needs) for(const [b,l] of Object.entries(t.needs)) if(bl(b)<l) return false; return true; }
 export function spawnCall(forceId, rush=false){ const open=S.calls.filter(c=>c.state==='open'&&!c.rush).length;
-  if(!forceId && open>=D.maxCalls(bl('comms'))) return null;
+  if(!forceId && open>=D.maxCalls(bl('comms'))+T.fx().calls) return null;
   let type=forceId ? D.CALLS.find(c=>c.id===forceId) : null;
   if(!type){ const pool=D.CALLS.filter(callAllowed); const w=pool.map(t=>1/(1+(maxTier()-t.tier)*.4)*(t.tier===maxTier()?1.4:1)); let r=Math.random()*w.reduce((a,b)=>a+b,0);
     type=pool[pool.length-1]; for(let i=0;i<pool.length;i++){ r-=w[i]; if(r<=0){ type=pool[i]; break; } } }
   const c={ id:'call'+(++S.callSeq), type:type.id, born:now(), expires:now()+(rush?240e3:300e3), state:'open', team:[], rush };
+  const site=T.siteFor(type.id); if(site) c.at=site.id;
   S.calls.push(c); return c; }
 export const callType = c => D.CALLS.find(t=>t.id===c.type);
 export function evalTeam(call, ids){
@@ -166,7 +178,8 @@ function resolveOne(call, stars, auto){ const ty=callType(call); const ok=stars>
       const st=addStationXP(Math.round(ty.xp*(ok?1:.4)));
       S.stats.calls++; ok?S.stats.success++:S.stats.fail++; if(ok&&ty.kind==='hazmat') S.stats.hazmat++;
       if(call.rush&&ok) S.rush.done++;
-      call.state='done'; return {call,type:ty,ok,stars,auto,coins,xp,badges,mats,ups,stationUps:st}; }
+      let lost=null; if(call.at){ const it=T.byId(call.at); if(it&&!ok&&T.damage(it.id)) lost=it.id; }
+      call.state='done'; return {call,type:ty,ok,stars,auto,coins,xp,badges,mats,ups,stationUps:st,lost}; }
 // the player finished (or bailed on) the hands-on scene
 export function finishAction(callId, stars){ const call=S.calls.find(c=>c.id===callId); if(!call||call.state!=='out') return null;
   call.action=false; const r=resolveOne(call, stars, false); S.calls=S.calls.filter(c=>c.state==='open'||c.state==='out'); return r; }
@@ -186,6 +199,9 @@ export function teamHelp(team, kind){ const has=r=>team.filter(m=>m.role===r); c
   if(has('medic').length) h.chips.push('➕ First Aid steadies the patient');
   if(has('rescue').length) h.chips.push('🛠️ Tech Rescue: wider tool windows');
   for(const m of team){ const sp=D.SPECIES[m.species]; if(sp) h.chips.push(`${m.name} the ${sp.name}: ${sp.perk}`); }
+  const tf=T.fx(); if(tf.water){ h.water*=1+tf.water; h.chips.push(`🗼 Water tower: +${Math.round(tf.water*100)}% tank`); }
+  if(tf.haz){ h.slow*=1-Math.min(.3,tf.haz); } if(tf.stable){ h.stable*=1-Math.min(.3,tf.stable); h.window*=1+Math.min(.3,tf.stable); }
+  if(tf.heli&&(kind==='fire'||kind==='bush')){ h.heli=true; h.chips.unshift('🚁 Water bomber on the way'); }
   return h; }
 
 /* ---------- rush hour ---------- */
@@ -241,6 +257,9 @@ export function startDisaster(type, warnSec=25){ if(S.dis.active) return null;
   S.dis.seen[type]=true; return S.dis.active; }
 function disasterHit(){ const a=S.dis.active, def=D.DISASTERS[a.type]; a.phase='active';
   for(const z of def.zones){ if(z.town&&!a.town.includes(z.town)) a.town.push(z.town); if(z.base) for(const id of z.base) if(S.buildings[id].l>=1&&!a.base.includes(id)) a.base.push(id); }
+  // v4: zones hit the buildings the player actually placed; abstract town damage only if they have none of that kind
+  const red=T.fx().dmg, n=Math.max(1,Math.round((2+Math.min(2,S.dis.count*.5))*(1-red))); a.items={}; const hitIds=[];
+  for(const z of def.zones){ if(!z.town) continue; const ids=T.pickTargets(TD_ZONE[z.town]||['home'],n,hitIds); if(ids.length){ a.items[z.id]=ids; hitIds.push(...ids); ids.forEach(id=>T.damage(id)); a.town=a.town.filter(k=>k!==z.town||def.zones.some(o=>o!==z&&o.town===k&&!a.items[o.id])); } }
   a.town.forEach(k=>S.town.damaged[k]=true); a.base.forEach(id=>{ S.buildings[id].dmg=true; delete S.buildings[id].up; });
   S.town.happy=Math.max(0,S.town.happy-10); }
 export const zoneDef = id => D.DISASTERS[S.dis.active.type].zones.find(z=>z.id===id);
@@ -260,7 +279,8 @@ export function finishZone(zoneId, stars, ids){ const a=S.dis.active, z=zoneDef(
   addCoins(coins); S.materials+=mats; S.town.rep+=rep; a.rewards.coins+=coins; a.rewards.mats+=mats; a.rewards.rep+=rep;
   team.forEach(m=>addCrewXP(m,10+stars*6)); addStationXP(6+stars*4);
   // a great job saves the structure outright
-  let saved=null; if(stars===3){ if(z.town&&S.town.damaged[z.town]&&!D.DISASTERS[a.type].zones.some(o=>o.id!==z.id&&o.town===z.town&&zoneState(o.id).state==='open')){ delete S.town.damaged[z.town]; a.town=a.town.filter(k=>k!==z.town); saved=D.TOWN[z.town].name; }
+  let saved=null; if(stars===3&&a.items&&a.items[z.id]){ a.items[z.id].forEach(id=>{ const it=T.byId(id); if(it&&it.dmg){ it.dmg=false; saved=(saved?saved+', ':'')+TDB(it.t).name; } }); }
+  if(stars===3){ if(z.town&&S.town.damaged[z.town]&&!D.DISASTERS[a.type].zones.some(o=>o.id!==z.id&&o.town===z.town&&zoneState(o.id).state==='open')){ delete S.town.damaged[z.town]; a.town=a.town.filter(k=>k!==z.town); saved=D.TOWN[z.town].name; }
     if(z.base){ const id=z.base.find(b=>S.buildings[b].dmg); if(id){ delete S.buildings[id].dmg; a.base=a.base.filter(b=>b!==id); saved=D.BUILDINGS[id].name; } } }
   S.town.happy=Math.max(0,Math.min(100,S.town.happy+(stars-1)*3*(1+teamFx(team,'happy'))));
   if(a.zones.every(q=>q.state!=='open')) toRebuild();
@@ -268,10 +288,11 @@ export function finishZone(zoneId, stars, ids){ const a=S.dis.active, z=zoneDef(
 export function standDown(){ const a=S.dis.active; a.zones.forEach(z=>{ if(z.state==='open'){ z.state='failed'; S.town.happy=Math.max(0,S.town.happy-6); } }); toRebuild(); }
 function toRebuild(){ const a=S.dis.active; a.phase='rebuild'; a.rebuildStart=now(); }
 export function rebuildList(){ const out=[]; for(const k of Object.keys(S.town.damaged)) out.push({kind:'town',id:k,name:D.TOWN[k].name,icon:D.TOWN[k].icon,cost:D.TOWN[k].cost});
-  for(const id of D.BUILD_ORDER) if(S.buildings[id].dmg) out.push({kind:'base',id,name:D.BUILDINGS[id].name,icon:D.BUILDINGS[id].icon,cost:D.baseRepairCost(id,S.buildings[id].l)}); return out; }
+  for(const id of D.BUILD_ORDER) if(S.buildings[id].dmg) out.push({kind:'base',id,name:D.BUILDINGS[id].name,icon:D.BUILDINGS[id].icon,cost:D.baseRepairCost(id,S.buildings[id].l)});
+  for(const it of T.damagedList()) out.push({kind:'tw',id:it.id,name:TDB(it.t).name+' Lv'+it.l,icon:TDB(it.t).icon,cost:T.repairCost(it)}); return out; }
 export function repairItem(kind,id){ const it=rebuildList().find(x=>x.kind===kind&&x.id===id); if(!it) return ['Nothing to fix'];
   if(S.coins<it.cost[0]) return ['Not enough coins']; if(S.materials<it.cost[1]) return ['Not enough materials. Earn them on disaster zones and 2-star call-outs'];
-  S.coins-=it.cost[0]; S.materials-=it.cost[1]; if(kind==='town') delete S.town.damaged[id]; else delete S.buildings[id].dmg;
+  if(kind==='tw'){ const e=T.repairT(id); if(e) return [e]; } else { S.coins-=it.cost[0]; S.materials-=it.cost[1]; } if(kind==='town') delete S.town.damaged[id]; else if(kind==='base') delete S.buildings[id].dmg;
   S.town.happy=Math.min(100,S.town.happy+(kind==='town'?8:3)); S.town.rep+=5; let done=null;
   if(S.dis.active&&S.dis.active.phase==='rebuild'&&!rebuildList().length) done=endDisaster(); return [null,done]; }
 export function finishDisaster(){ const a=S.dis.active; if(!a||a.phase!=='rebuild'||rebuildList().length) return null; return endDisaster(); }
@@ -284,7 +305,7 @@ function disasterTick(events){ const t=now(), a=S.dis.active;
   if(a.phase!=='rebuild') S.nextCallAt=Math.max(S.nextCallAt,t+20000);   // the pager goes quiet during a disaster
 }
 /* ---------- main tick: call every frame or so; returns events for the UI ---------- */
-export function tick(){ const events=[]; sizzleTick();
+export function tick(){ const events=[]; sizzleTick(); T.townTick(events);
   const built=finishBuildings(); built.forEach(id=>events.push({built:id}));
   resolveCalls().forEach(r=>events.push({result:r}));
   if(now()>=S.nextCallAt){ const first=S.firstCallsDone===0&&!S.calls.some(c=>c.type==='bin');
