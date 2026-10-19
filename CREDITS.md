@@ -3,3 +3,7 @@
 - three.js r186, MIT licence, (c) 2010-2026 three.js authors. See js/vendor/THREE-LICENSE.txt.
 - Lilita One font by Juan Montoreano, SIL Open Font License 1.1. See assets/fonts/OFL.txt.
 - No fire-service names, logos, badges or crests are used. Station and rival names are fictional.
+
+## v3
+- Animal crew portraits are drawn in code (SVG), in-house. Optional webp portrait files in assets/crew/ were AI-assisted image generations made for this project.
+- All fire services, places and stations are fictional. Not affiliated with any fire service.

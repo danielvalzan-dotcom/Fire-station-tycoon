@@ -1,7 +1,7 @@
 // Competition mini-games, drawn on a 2D canvas. Crew stats (norm 0..1) make the player more effective.
 import { Snd } from './audio.js';
 const COLORS=['#e53935','#1e88e5','#43a047','#8e24aa'];
-export function runMinigame(root, comp, { norm, rivals, you='You' }, onDone){
+export function runMinigame(root, comp, { norm, rivals, you='You', ld=0.78, perk=0 }, onDone){
   root.innerHTML=`<div class="mg-top"><div class="mg-title">${comp.icon} ${comp.name}</div><div class="mg-how">${comp.how}</div></div>
     <canvas class="mg-cv"></canvas><div class="mg-count"></div>
     ${comp.game==='rhythm'?'<div class="mg-lr"><div class="mg-l">LEFT</div><div class="mg-r">RIGHT</div></div>':''}
@@ -10,31 +10,34 @@ export function runMinigame(root, comp, { norm, rivals, you='You' }, onDone){
   const cv=root.querySelector('.mg-cv'), g=cv.getContext('2d'), countEl=root.querySelector('.mg-count'), zone=root.querySelector('.mg-tapzone');
   const dpr=Math.min(2,window.devicePixelRatio||1); let W=0,H=0;
   function size(){ const r=cv.getBoundingClientRect(); W=r.width; H=r.height; cv.width=W*dpr; cv.height=H*dpr; g.setTransform(dpr,0,0,dpr,0,0); } size();
-  const mul=.75+.5*norm;
+  const mul=(.85+.7*norm)*(1+perk);
+  // rival strength: league difficulty x (rating spread) x a nudge towards your crew's power, so early rivals are beatable
+  const rs = r => ld*(.55+.45*(r??.5))*(.9+.4*norm);
   const lanes=[{name:you,you:true,col:'#ffca28',p:0,done:null},...rivals.map((r,i)=>({name:r.name,r:r.rating,col:COLORS[i+1],p:0,done:null,jit:.92+Math.random()*.16}))];
   let state='count', t=0, cd=3.2, last=performance.now(), raf=0, flash=[], ended=false;
   // game-specific
-  const G={ mash:{goal:100}, timing:{goal:12, x:0, dir:1, zc:.5, zw:.16+.16*norm, lock:0, sp:1.5}, rhythm:{goal:30,lastSide:null,stun:0}, catch:{n:10, i:0, x:0, T:1.05, pts:0, tapped:false, res:[]} }[comp.game];
+  const G={ mash:{goal:100}, timing:{goal:12, x:0, dir:1, zc:.5, zw:Math.min(.42,.2+.2*norm+perk*.2), lock:0, sp:1.3}, rhythm:{goal:30,lastSide:null,stun:0}, catch:{n:10, i:0, x:0, T:1.05, pts:0, tapped:false, res:[]} }[comp.game];
   if(comp.game==='timing') G.zc=.25+Math.random()*.5;
-  const aiRate = r => ({ mash:(9+9*r), timing:12/(12*(.42+(1-r)*.5)), rhythm:(3+3*r) })[comp.game];
+  const aiRate = r => ({ mash:16*rs(r), timing:1.3*rs(r), rhythm:4.8*rs(r) })[comp.game];
   function input(e){ e.preventDefault(); if(state!=='go') return; const me=lanes[0];
     if(comp.game==='mash'){ me.p+=2.4*mul; Snd.step(); burst(W/2, H*.7,'#ffffff',3); }
     else if(comp.game==='timing'){ if(G.lock>0) return; const d=Math.abs(G.x-G.zc);
-      if(d<=G.zw/2){ me.p+=1; const perfect=d<G.zw/6; Snd.hit(perfect?2:1); pop(perfect?'PERFECT!':'NICE!', perfect?'#ffd54f':'#ffffff'); G.zc=.2+Math.random()*.6; G.sp=1.5+me.p*.06; }
+      if(d<=G.zw/2){ me.p+=1; const perfect=d<G.zw/6; Snd.hit(perfect?2:1); pop(perfect?'PERFECT!':'NICE!', perfect?'#ffd54f':'#ffffff'); G.zc=.2+Math.random()*.6; G.sp=1.3+me.p*.05; }
       else { Snd.hit(0); pop('SLIP!','#ff8a80'); G.lock=.5; } }
     else if(comp.game==='rhythm'){ if(G.stun>0) return; const r=root.getBoundingClientRect(); const side=(e.clientX-r.left)<r.width/2?'L':'R';
       root.querySelector(side==='L'?'.mg-l':'.mg-r').classList.add('hit'); setTimeout(()=>root.querySelector(side==='L'?'.mg-l':'.mg-r')?.classList.remove('hit'),90);
-      if(side===G.lastSide){ G.stun=.35; Snd.hit(0); pop('STUMBLE!','#ff8a80'); } else { me.p+=.7*mul; Snd.step(); } G.lastSide=side; }
+      if(side===G.lastSide){ G.stun=.35; Snd.hit(0); pop('STUMBLE!','#ff8a80'); } else { me.p+=.8*mul; Snd.step(); } G.lastSide=side; }
     else if(comp.game==='catch'){ if(G.tapped) return; G.tapped=true; const d=Math.abs(G.x-.5);
-      const q = d<.05?2 : d<.12+.06*norm?1 : 0; G.pts+=[0,6,10][q]; G.res.push(q); Snd.hit(q); if(q) Snd.splash(); pop(['MISS','GOOD','PERFECT!'][q],['#ff8a80','#ffffff','#ffd54f'][q]); }
+      const q = d<.06?2 : d<.15+.08*norm+perk*.1?1 : 0; G.pts+=[0,6,10][q]; G.res.push(q); Snd.hit(q); if(q) Snd.splash(); pop(['MISS','GOOD','PERFECT!'][q],['#ff8a80','#ffffff','#ffd54f'][q]); }
   }
   zone.addEventListener('pointerdown',input,{passive:false});
+  window.__mg={comp,G,lanes,get state(){return state;}};
   function pop(text,col){ flash.push({text,col,life:.7}); }
   const parts=[]; function burst(x,y,col,n){ for(let i=0;i<n;i++) parts.push({x,y,vx:(Math.random()-.5)*160,vy:-Math.random()*160,life:.5,col}); }
   function finishOrder(){ const key=comp.game==='catch'?'score':'time'; const rows=lanes.map(l=>({name:l.name,you:!!l.you,col:l.col,
       value: comp.game==='catch' ? l.score : l.done ?? 99 }));
     rows.sort((a,b)=>comp.game==='catch'?b.value-a.value:a.value-b.value); return rows; }
-  function end(){ if(ended) return; ended=true; state='end'; if(comp.game==='catch'){ lanes[0].score=G.pts; lanes.slice(1).forEach(l=>{ l.score=Math.round(45+50*l.r*l.jit+(Math.random()*16-8)); }); }
+  function end(){ if(ended) return; ended=true; state='end'; if(comp.game==='catch'){ lanes[0].score=G.pts; lanes.slice(1).forEach(l=>{ l.score=Math.round((30+46*rs(l.r)/Math.max(.5,ld))*Math.min(1.35,ld/0.78)*l.jit+(Math.random()*10-5)); }); }
     const rows=finishOrder(); const place=rows.findIndex(r=>r.you); Snd.cheer(1.8,place===0?1:.5);
     setTimeout(()=>{ cancelAnimationFrame(raf); root.classList.remove('on'); root.innerHTML=''; onDone({place,rows,perf:comp.game==='catch'?G.pts/100:null}); },1400); }
   function step(now){ const dt=Math.min(.1,(now-last)/1000); last=now; t+=dt;
@@ -42,7 +45,7 @@ export function runMinigame(root, comp, { norm, rivals, you='You' }, onDone){
       if(cd<=0){ state='go'; t=0; countEl.textContent='GO!'; countEl.classList.add('pulse'); Snd.beep(true); setTimeout(()=>countEl.textContent='',600); } }
     else if(state==='go'){
       if(comp.game==='catch'){ G.x+=dt/G.T; if(G.x>=1){ if(!G.tapped){ G.res.push(0); pop('MISS','#ff8a80'); } G.i++; G.x=0; G.tapped=false; G.T=Math.max(.62,G.T*.95); if(G.i>=G.n) end(); }
-        lanes.slice(1).forEach(l=>l.p=(G.i+G.x)/G.n*(.45+.5*l.r)); lanes[0].p=G.pts/100; }
+        lanes.slice(1).forEach(l=>l.p=(G.i+G.x)/G.n*(.4+.4*rs(l.r))); lanes[0].p=G.pts/100; }
       else { const goal=G.goal; for(const l of lanes.slice(1)) if(!l.done){ l.p+=aiRate(l.r)*l.jit*dt; if(l.p>=goal){ l.p=goal; l.done=t; } }
         const me=lanes[0]; if(!me.done&&me.p>=goal){ me.p=goal; me.done=t; Snd.cheer(1,.6); }
         if(comp.game==='timing'){ G.lock=Math.max(0,G.lock-dt); G.x+=G.dir*dt*G.sp*.9; if(G.x>1){G.x=1;G.dir=-1;} if(G.x<0){G.x=0;G.dir=1;} }

@@ -1,6 +1,6 @@
-// Firey Station Tycoon v2: game state and rules. No DOM in here, so it can be unit-tested or moved server-side later.
+// Firey Station Tycoon v3: game state and rules. No DOM in here, so it can be unit-tested or moved server-side later.
 import * as D from './data.js';
-const KEY='fst_v2_save', OLD_KEY='fireyStationTycoon_v1';
+const KEY='fst_v3_save', V2_KEY='fst_v2_save', OLD_KEY='fireyStationTycoon_v1';
 export let S=null;
 const now=()=>Date.now();
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -8,19 +8,23 @@ const pick=a=>a[Math.floor(Math.random()*a.length)];
 let uid=1; const newId=p=>p+'_'+Date.now().toString(36)+'_'+(uid++)+Math.random().toString(36).slice(2,5);
 
 export function newState(){
-  const s={ v:2, created:now(), lastSeen:now(), playerId:newId('p'), stationName:'Snag Flats Station',
+  const s={ v:3, created:now(), lastSeen:now(), playerId:newId('p'), stationName:'Snag Flats Station',
     coins:400, badges:30, level:1, xp:0,
     buildings:{ engine:{l:1}, tower:{l:1}, gym:{l:0}, hazmat:{l:0}, rescue:{l:0}, quarters:{l:1}, comms:{l:1} },
     builders:1, crew:[], calls:[], nextCallAt:now()+4000, callSeq:0,
     sizzle:{stored:0,last:now()}, trophies:0, comp:{played:0,wins:0,best:{}}, crates:0,
     quests:{idx:0, claimed:[]}, rush:{active:false,next:now()+5*60e3,until:0,ids:[],done:0},
     stats:{calls:0,success:0,fail:0,earned:0,hazmat:0,gearUps:0},
-    prefs:{sfx:true,music:true}, xmas:false, tut:0, firstCallsDone:0, migratedFrom:null };
-  S=s; for(const r of ['officer','ff','ff','driver']) s.crew.push(makeCrew(r)); return s; }
+    prefs:{sfx:true,music:true}, xmas:false, tut:0, firstCallsDone:0, migratedFrom:null,
+    materials:10, town:{happy:75, rep:0, damaged:{}}, played:{}, stars:{}, dis:{next:now()+6*60e3, active:null, count:0, seen:{}} };
+  S=s; const sp=['roo','wombat','koala','platypus']; ['officer','ff','ff','driver'].forEach((r,i)=>s.crew.push(makeCrew(r,sp[i]))); return s; }
 
 export function load(){
   let raw=null; try{ raw=localStorage.getItem(KEY); }catch(e){}
-  if(raw){ try{ const d=JSON.parse(raw); if(d&&d.v===2){ S=d; repair(); return {fresh:false}; } }catch(e){ console.warn('v2 save unreadable, starting fresh', e); } }
+  if(raw){ try{ const d=JSON.parse(raw); if(d&&d.v===3){ S=d; repair(); return {fresh:false}; } }catch(e){ console.warn('v3 save unreadable, starting fresh', e); } }
+  // v2 -> v3: keep everything, give each crew member an animal species
+  try{ const v2=JSON.parse(localStorage.getItem(V2_KEY)||'null');
+    if(v2&&v2.v===2&&Array.isArray(v2.crew)){ S=v2; S.v=3; S.migratedFrom='v2'; repair(); save(); return {fresh:true, migrated:{fromV2:true, crew:S.crew.length}}; } }catch(e){ console.warn('v2 save unreadable', e); }
   newState(); let migrated=null;
   try{ const old=JSON.parse(localStorage.getItem(OLD_KEY)||'null');
     if(old&&typeof old==='object'){ const earned=+old.stats?.earned||+old.coins||0;
@@ -30,7 +34,11 @@ export function load(){
 function repair(){ const def=defaults();
   for(const k of Object.keys(def)) if(S[k]===undefined) S[k]=def[k];
   for(const id of D.BUILD_ORDER) if(!S.buildings[id]) S.buildings[id]={l:0};
-  S.crew.forEach(c=>{ c.gear=Object.assign({helmet:0,coat:0,boots:0,ba:0},c.gear); for(const [k] of D.ROLES[c.role].skills) if(!c.sk[k]) c.sk[k]=1; });
+  S.crew.forEach((c,i)=>{ c.gear=Object.assign({helmet:0,coat:0,boots:0,ba:0},c.gear); for(const [k] of D.ROLES[c.role].skills) if(!c.sk[k]) c.sk[k]=1;
+    if(!D.SPECIES[c.species]) c.species=D.SPECIES_ORDER[(i*5+3)%D.SPECIES_ORDER.length]; });
+  S.town=Object.assign({happy:75,rep:0,damaged:{}},S.town||{}); S.dis=Object.assign({next:now()+6*60e3,active:null,count:0,seen:{}},S.dis||{});
+  // an action scene that was open when the app closed resolves on the timer instead
+  S.calls.forEach(c=>{ if(c.state==='out'&&c.action){ c.action=false; c.end=now()+5000; } });
   // anything that was mid-flight when the app closed is resolved by tick()
 }
 function defaults(){ const keep=S; const d=newState(); S=keep; return d; }
@@ -40,18 +48,19 @@ export function resetAll(){ try{ localStorage.removeItem(KEY); }catch(e){} newSt
 /* ---------- station level ---------- */
 export const stationXpNeed = L => Math.round(40*Math.pow(1.45,L-1));
 export function addStationXP(n){ S.xp+=n; const ups=[]; while(S.xp>=stationXpNeed(S.level)){ S.xp-=stationXpNeed(S.level); S.level++; S.badges+=5; ups.push(S.level); } return ups; }
-export const payMult = () => 1 + 0.05*(S.level-1);
+export const payMult = () => (1 + 0.05*(S.level-1)) * (0.9 + 0.2*(S.town?.happy??75)/100);
 
 /* ---------- buildings ---------- */
-export const bl = id => S.buildings[id].l;
+export const bl = id => { const b=S.buildings[id]; return b.dmg?Math.max(0,b.l-1):b.l; };
+export const damaged = id => !!S.buildings[id].dmg;
 export function bInfo(id){ const b=S.buildings[id], def=D.BUILDINGS[id]; const up=b.up&&b.up.end>now()?b.up:null;
-  const locked = b.l===0 && def.unlock && S.level<def.unlock;
+  const locked = b.l===0 && def.unlock && S.level<def.unlock; const dmg=!!b.dmg;
   const maxByStation = Math.min(def.max, S.level+1);
-  return { id, def, l:b.l, up, remaining: up?(up.end-now())/1000:0, total: up?up.total:0, locked, unlockAt:def.unlock||1,
+  return { id, def, l:b.l, up, dmg, remaining: up?(up.end-now())/1000:0, total: up?up.total:0, locked, unlockAt:def.unlock||1,
     maxed:b.l>=def.max, capped:b.l>=maxByStation&&b.l<def.max, cost:b.l<def.max?D.buildCost(id,b.l):null, time:b.l<def.max?D.buildTime(id,b.l):null }; }
 export const buildersBusy = () => D.BUILD_ORDER.filter(id=>S.buildings[id].up).length;
 export function startUpgrade(id){ const i=bInfo(id);
-  if(i.up) return 'Already upgrading'; if(i.maxed) return 'Max level'; if(i.locked) return `Unlocks at station level ${i.unlockAt}`;
+  if(i.dmg) return 'Damaged in the disaster. Repair it first'; if(i.up) return 'Already upgrading'; if(i.maxed) return 'Max level'; if(i.locked) return `Unlocks at station level ${i.unlockAt}`;
   if(i.capped) return `Reach station level ${i.l} first`; if(buildersBusy()>=S.builders) return 'Your builder is busy';
   if(S.coins<i.cost) return 'Not enough coins';
   S.coins-=i.cost; S.buildings[id].up={start:now(),end:now()+i.time*1000,total:i.time}; return null; }
@@ -67,18 +76,20 @@ export function collectSizzle(){ const n=Math.floor(S.sizzle.stored); if(n<1) re
 export function addCoins(n){ S.coins+=n; S.stats.earned+=n; }
 
 /* ---------- crew ---------- */
-export function makeCrew(role){ const taken=new Set(S?S.crew.map(c=>c.name):[]); let name=pick(D.CREW_NAMES.filter(n=>!taken.has(n))) || pick(D.CREW_NAMES)+' '+(Math.random()*9|0);
+export function makeCrew(role, species){ const taken=new Set(S?S.crew.map(c=>c.name):[]); let name=pick(D.CREW_NAMES.filter(n=>!taken.has(n))) || pick(D.CREW_NAMES)+' '+(Math.random()*9|0);
   const sk={}; for(const [k] of D.ROLES[role].skills) sk[k]=1;
-  return { id:newId('c'), name, role, lvl:1, xp:0, sp:1, sk, gear:{helmet:0,coat:0,boots:0,ba:0},
+  return { id:newId('c'), name, role, species:species||pick(D.SPECIES_ORDER), lvl:1, xp:0, sp:1, sk, gear:{helmet:0,coat:0,boots:0,ba:0},
     look:{ skin:Math.floor(Math.random()*D.SKIN_TONES.length), hair:Math.floor(Math.random()*D.HAIR.length), stache:Math.random()<.3, hairStyle:Math.floor(Math.random()*3) }, busy:null }; }
 export const crewBeds = () => D.crewBeds(bl('quarters'));
 export const nextRecruitCost = () => D.recruitCost(S.crew.length);
-export function recruit(role){ if(S.crew.length>=crewBeds()) return ['Quarters are full. Upgrade Quarters & Kitchen for more beds']; const c=nextRecruitCost();
-  if(S.coins<c) return ['Not enough coins']; S.coins-=c; const m=makeCrew(role); S.crew.push(m); return [null,m]; }
+export function recruit(role, species){ if(S.crew.length>=crewBeds()) return ['Quarters are full. Upgrade Quarters & Kitchen for more beds']; const c=nextRecruitCost();
+  if(S.coins<c) return ['Not enough coins']; S.coins-=c; const m=makeCrew(role, species); S.crew.push(m); return [null,m]; }
 export const gearBonus = c => D.GEAR_SLOTS.reduce((a,[k])=>a+D.RARITY[c.gear[k]].bonus,0);
 export const bestRarity = c => Math.max(...D.GEAR_SLOTS.map(([k])=>c.gear[k]));
 export const crewCap = () => D.crewCap(bl('tower'));
-export function memberPower(c, skills){ let p=c.lvl*2; for(const k of skills) if(c.sk[k]) p+=c.sk[k]*5; return p*(1+gearBonus(c)/100); }
+export const fx = c => (D.SPECIES[c.species]||D.SPECIES.roo).fx;
+export function memberPower(c, skills, kind){ let p=c.lvl*2; for(const k of skills) if(c.sk[k]) p+=c.sk[k]*5; const pw=kind?(fx(c).power?.[kind]||0):0; return p*(1+gearBonus(c)/100)*(1+pw); }
+const teamFx = (team,k) => team.reduce((a,m)=>a+(fx(m)[k]||0),0);
 export function overallPower(c){ return Math.round(memberPower(c, D.ROLES[c.role].skills.map(s=>s[0]))); }
 export function addCrewXP(c,n){ const ups=[]; if(c.lvl>=crewCap()) { c.xp=Math.min(c.xp+n, D.xpNeed(c.lvl)-1); return ups; }
   c.xp+=n; while(c.xp>=D.xpNeed(c.lvl) && c.lvl<crewCap()){ c.xp-=D.xpNeed(c.lvl); c.lvl++; c.sp++; ups.push(c.lvl); } return ups; }
@@ -112,7 +123,7 @@ export function evalTeam(call, ids){
   const counts={}; team.forEach(m=>counts[m.role]=(counts[m.role]||0)+1);
   const missing=[]; for(const [r,n] of Object.entries(t.req)) if((counts[r]||0)<n) missing.push([r,n-(counts[r]||0)]);
   const minPeople=Math.max(t.min||0, Object.values(t.req).reduce((a,b)=>a+b,0));
-  let power=team.reduce((a,m)=>a+memberPower(m,t.skills),0);
+  const pk=t.id==='grass'?'bush':t.kind; let power=team.reduce((a,m)=>a+memberPower(m,t.skills,pk),0);
   const off=team.filter(m=>m.role==='officer').sort((a,b)=>b.sk.command-a.sk.command)[0];
   if(off) power*=1+0.03*off.sk.command;
   if(t.kind==='hazmat') power*=1+0.05*bl('hazmat'); if(t.kind==='rescue') power*=1+0.05*bl('rescue');
@@ -120,8 +131,8 @@ export function evalTeam(call, ids){
   const chance=Math.max(.05,Math.min(.97,.2+.75*power/t.diff+bonusN*.06));
   const drv=team.filter(m=>m.role==='driver').reduce((a,m)=>Math.max(a,m.sk.driving+m.sk.nav),0);
   const speed=Math.min(.45, drv*.012 + (off?off.sk.sizeup*.015:0) + bl('gym')*.02 + team.reduce((a,m)=>a+(m.sk.tools||0)*.008+(m.sk.contain||0)*.008,0));
-  const time=Math.round(t.time*(1-speed));
-  const reward=Math.round(t.reward*payMult()*(call.rush?2:1));
+  const time=Math.round(t.time*(1-Math.min(.55,speed+teamFx(team,'speed'))));
+  const reward=Math.round(t.reward*payMult()*(call.rush?2:1)*(1+teamFx(team,'pay')));
   return { ok:!missing.length && team.length>=Math.max(1,minPeople) && team.length<=D.seats(bl('engine')), missing, chance, time, reward, power:Math.round(power), minPeople, seats:D.seats(bl('engine')) };
 }
 export function autoTeam(call){ const t=callType(call); const free=S.crew.filter(c=>!c.busy); const team=[]; const seats=D.seats(bl('engine'));
@@ -130,28 +141,52 @@ export function autoTeam(call){ const t=callType(call); const free=S.crew.filter
   const rest=free.filter(c=>!team.includes(c)).sort((a,b)=>memberPower(b,t.skills)-memberPower(a,t.skills));
   while(team.length<Math.max(t.min||1, Math.min(seats, Object.values(t.req).reduce((a,b)=>a+b,0)+1)) && rest.length) team.push(rest.shift());
   return team.slice(0,seats).map(c=>c.id); }
-export function dispatch(callId, ids){ const call=S.calls.find(c=>c.id===callId); if(!call||call.state!=='open') return 'That call is gone';
+export function dispatch(callId, ids, auto=true){ const call=S.calls.find(c=>c.id===callId); if(!call||call.state!=='open') return 'That call is gone';
   if(freeAppliances()<1) return 'No free trucks. Upgrade the Engine Bay for more appliances';
   if(ids.some(id=>S.crew.find(c=>c.id===id)?.busy)) return 'Someone in that team is busy';
   const e=evalTeam(call,ids); if(!e.ok) return e.missing.length?'Missing crew: '+e.missing.map(([r,n])=>`${n}× ${D.ROLES[r].short}`).join(', '):'Pick a team';
-  call.state='out'; call.team=ids; call.start=now(); call.end=now()+e.time*1000; call.chance=e.chance; call.reward=e.reward;
+  call.state='out'; call.team=ids; call.start=now(); call.end=auto?now()+e.time*1000:now()+36e5; call.action=!auto; call.chance=e.chance; call.reward=e.reward; call.power=e.power;
   ids.forEach(id=>{ S.crew.find(c=>c.id===id).busy=call.id; }); S.firstCallsDone++; return null; }
-export function callSpeedCost(call){ return call.state==='out'?D.badgeSpeedCost((call.end-now())/1000):0; }
+export function callSpeedCost(call){ return call.state==='out'&&!call.action?D.badgeSpeedCost((call.end-now())/1000):0; }
 export function speedCall(call){ const c=callSpeedCost(call); if(S.badges<c) return 'Not enough badges'; S.badges-=c; call.end=now(); return null; }
 function resolveCalls(){ const out=[]; const t=now();
-  for(const call of S.calls){ if(call.state==='out'&&call.end<=t){ const ty=callType(call); const ok=Math.random()<call.chance;
-      const coins=ok?call.reward:Math.round(call.reward*.3); addCoins(coins);
+  for(const call of S.calls){ if(call.state==='out'&&!call.action&&call.end<=t){ out.push(resolveOne(call, Math.random()<call.chance?(Math.random()<.5?2:1):0, true)); }
+    else if(call.state==='open'&&call.expires<=t) call.state='expired'; }
+  S.calls=S.calls.filter(c=>c.state==='open'||c.state==='out'); return out; }
+function resolveOne(call, stars, auto){ const ty=callType(call); const ok=stars>0;
+      const coins=Math.round(call.reward*D.starPay(stars)); addCoins(coins);
       const team=call.team.map(id=>S.crew.find(c=>c.id===id)).filter(Boolean);
       const morale=Math.max(0,...team.filter(m=>m.role==='officer').map(m=>m.sk.morale));
-      const xp=Math.round(ty.xp*(ok?1:.5)*(1+morale*.05)); const ups=[];
+      const xp=Math.round(ty.xp*(ok?1:.5)*(1+morale*.05)*(1+teamFx(team,'xp'))*(auto?1:1.25)); const ups=[];
       team.forEach(m=>{ m.busy=null; const u=addCrewXP(m,xp); if(u.length) ups.push([m,u[u.length-1]]); });
-      const badges = ok && (ty.tier>=3 || call.rush) ? (call.rush?2:1) : 0; S.badges+=badges;
+      const badges = (ok && (ty.tier>=3 || call.rush) ? (call.rush?2:1) : 0) + (stars===3&&!auto?1:0); S.badges+=badges;
+      const mats = stars>=2 ? 1+(ty.tier>=2?1:0) : 0; S.materials+=mats;
+      const happy = ok ? 1.5*(1+teamFx(team,'happy')) : -2; S.town.happy=Math.max(0,Math.min(100,S.town.happy+happy));
+      if(!auto){ S.played[ty.id]=true; S.stars[ty.id]=Math.max(S.stars[ty.id]||0,stars); }
       const st=addStationXP(Math.round(ty.xp*(ok?1:.4)));
       S.stats.calls++; ok?S.stats.success++:S.stats.fail++; if(ok&&ty.kind==='hazmat') S.stats.hazmat++;
       if(call.rush&&ok) S.rush.done++;
-      call.state='done'; out.push({call,type:ty,ok,coins,xp,badges,ups,stationUps:st}); }
-    else if(call.state==='open'&&call.expires<=t) call.state='expired'; }
-  S.calls=S.calls.filter(c=>c.state==='open'||c.state==='out'); return out; }
+      call.state='done'; return {call,type:ty,ok,stars,auto,coins,xp,badges,mats,ups,stationUps:st}; }
+// the player finished (or bailed on) the hands-on scene
+export function finishAction(callId, stars){ const call=S.calls.find(c=>c.id===callId); if(!call||call.state!=='out') return null;
+  call.action=false; const r=resolveOne(call, stars, false); S.calls=S.calls.filter(c=>c.state==='open'||c.state==='out'); return r; }
+export const canAuto = call => { const t=callType(call); return t.tier<=D.AUTO_TIER && !!S.played[t.id]; };
+export const teamOf = ids => ids.map(id=>S.crew.find(c=>c.id===id)).filter(Boolean);
+// what the crew brings to a hands-on scene
+export function teamHelp(team, kind){ const has=r=>team.filter(m=>m.role===r); const top=(r,k)=>Math.max(0,...has(r).map(m=>m.sk[k]||0));
+  const lv=team.reduce((a,m)=>a+m.lvl,0)/Math.max(1,team.length), gear=team.reduce((a,m)=>a+gearBonus(m),0)/Math.max(1,team.length)/100;
+  const h={ chips:[], hotspots:has('officer').length>0||teamFx(team,'spot')>0, pressure:1+top('driver','pumping')*.05+teamFx(team,'water')+(has('driver').length?.1:0),
+    water:1+top('driver','pumping')*.06, heat:Math.max(.25,1-teamFx(team,'heat')-gear*.4), slow:1-Math.min(.5,top('hazmat','contain')*.05+(has('hazmat').length?.15:0)),
+    window:1+top('rescue','extric')*.04+top('medic','cpr')*.05+teamFx(team,'calm')+(has('medic').length?.1:0), tap:1+teamFx(team,'tap')+top('ff','fitness')*.03+lv*.02,
+    search:1+teamFx(team,'search')+top('ff','search')*.04+top('hazmat','detect')*.05, climb:1+teamFx(team,'climb')+top('rescue','rope')*.05, stable:1-Math.min(.5,top('medic','care')*.05+(has('medic').length?.15:0)),
+    power:1+lv*.03+gear, flood:1+teamFx(team,'flood')+team.reduce((a,m)=>a+(fx(m).power?.flood||0),0) };
+  if(h.hotspots) h.chips.push(has('officer').length?'⭐ Officer marks hotspots':'🦜 Lookout spots hotspots');
+  if(has('driver').length) h.chips.push(`🚚 Driver: +${Math.round((h.pressure-1)*100)}% pressure`);
+  if(has('hazmat').length) h.chips.push(`☣️ Hazmat: spill ${Math.round((1-h.slow)*100)}% slower`);
+  if(has('medic').length) h.chips.push('➕ First Aid steadies the patient');
+  if(has('rescue').length) h.chips.push('🛠️ Tech Rescue: wider tool windows');
+  for(const m of team){ const sp=D.SPECIES[m.species]; if(sp) h.chips.push(`${m.name} the ${sp.name}: ${sp.perk}`); }
+  return h; }
 
 /* ---------- rush hour ---------- */
 function rushTick(events){ const r=S.rush, t=now();
@@ -164,6 +199,9 @@ function rushTick(events){ const r=S.rush, t=now();
 export const league = () => D.leagueOf(S.trophies);
 export function compTeam(comp){ return S.crew.filter(c=>!c.busy).sort((a,b)=>memberPower(b,comp.skills)-memberPower(a,comp.skills)).slice(0,3); }
 export function crewNorm(comp, team){ const p=team.reduce((a,m)=>a+memberPower(m,comp.skills),0)*(1+bl('gym')*.04); return p/(p+90); }
+export const compPerk = (comp, team) => team.reduce((a,m)=>a+(fx(m).comp?.[comp.game]||0),0);
+// rival strength: league sets the base, nudged towards your own crew so early rivals are beatable
+export const leagueDiff = () => 0.68 + 0.15*league();
 export function applyComp(comp, place, team){ const L=D.LEAGUES[league()]; const dT=[30,12,-6,-12][place]; const before=league();
   S.trophies=Math.max(0,S.trophies+dT); S.comp.played++; if(place===0) S.comp.wins++; if(place<=1) S.comp.top2=true;
   const coins=Math.round(L.reward[0]*[1,.5,.25,.15][place]); const badges=place===0?L.reward[1]:place===1?1:0; addCoins(coins); S.badges+=badges;
@@ -175,6 +213,7 @@ export function applyComp(comp, place, team){ const L=D.LEAGUES[league()]; const
 /* ---------- quests (earn premium badges) ---------- */
 export const QUESTS = [
   { text:'Send a crew to a call-out',            reward:10, done:()=>S.firstCallsDone>=1 },
+  { text:'Earn 2 stars on a hands-on call-out',  reward:10, done:()=>Object.values(S.stars||{}).some(v=>v>=2) },
   { text:'Upgrade the Engine Bay to level 2',    reward:10, done:()=>bl('engine')>=2 },
   { text:'Recruit a First Aid crew member',      reward:10, done:()=>S.crew.some(c=>c.role==='medic') },
   { text:'Place top 2 in a competition',         reward:15, done:()=>S.comp.played>0&&(S.comp.wins>0||S.comp.top2) },
@@ -185,16 +224,69 @@ export const QUESTS = [
   { text:'Reach station level 4',                reward:20, done:()=>S.level>=4 },
   { text:'Build the Hazmat Store',               reward:20, done:()=>bl('hazmat')>=1 },
   { text:'Succeed at a hazmat call-out',         reward:20, done:()=>S.stats.hazmat>=1 },
+  { text:'Get the town through a disaster',     reward:25, done:()=>S.dis.count>=1 },
   { text:'Reach Silver league',                  reward:25, done:()=>S.trophies>=150 },
   { text:'Get the Engine Bay to level 5',        reward:30, done:()=>bl('engine')>=5 },
 ];
 export const currentQuest = () => QUESTS[S.quests.idx] || null;
 export function claimQuest(){ const q=currentQuest(); if(!q||!q.done()) return 0; S.badges+=q.reward; S.quests.idx++; return q.reward; }
 
+
+/* ---------- disasters (v3) ---------- */
+export const dis = () => S.dis.active;
+export function startDisaster(type, warnSec=25){ if(S.dis.active) return null;
+  const order=D.DISASTER_ORDER; type=type||order.find(t=>!S.dis.seen[t])||pick(order); const def=D.DISASTERS[type];
+  S.dis.active={ type, phase:'warn', warnEnd:now()+warnSec*1000, start:now(), shifts:{},
+    zones:def.zones.map(z=>({id:z.id, state:'open', stars:0})), town:[], base:[], rewards:{coins:0,mats:0,rep:0} };
+  S.dis.seen[type]=true; return S.dis.active; }
+function disasterHit(){ const a=S.dis.active, def=D.DISASTERS[a.type]; a.phase='active';
+  for(const z of def.zones){ if(z.town&&!a.town.includes(z.town)) a.town.push(z.town); if(z.base) for(const id of z.base) if(S.buildings[id].l>=1&&!a.base.includes(id)) a.base.push(id); }
+  a.town.forEach(k=>S.town.damaged[k]=true); a.base.forEach(id=>{ S.buildings[id].dmg=true; delete S.buildings[id].up; });
+  S.town.happy=Math.max(0,S.town.happy-10); }
+export const zoneDef = id => D.DISASTERS[S.dis.active.type].zones.find(z=>z.id===id);
+export const zoneState = id => S.dis.active.zones.find(z=>z.id===id);
+export const shiftsLeft = c => 2-(S.dis.active?.shifts[c.id]||0);
+export function zoneTeamOk(zoneId, ids){ const z=zoneDef(zoneId), team=teamOf(ids);
+  if(!team.length) return 'Pick a crew'; if(team.length>4) return 'Max 4 crew per zone';
+  if(!team.some(m=>m.role===z.lead)) return `This zone needs a ${D.ROLES[z.lead].short} to lead`;
+  if(team.some(m=>shiftsLeft(m)<1)) return 'Someone in that team is exhausted (2 zones max per disaster)'; return null; }
+export function autoZoneTeam(zoneId){ const z=zoneDef(zoneId); const free=S.crew.filter(m=>!m.busy&&shiftsLeft(m)>0);
+  const kindSkills={fire:['firefight','pumping'],bush:['firefight','fitness'],flood:['fitness','driving','rope'],rescue:['tools','rope','extric'],collapse:['extric','tools','search'],hazmat:['contain','detect','decon'],medical:['care','cpr']}[z.kind]||[];
+  const sc=m=>memberPower(m,kindSkills,z.kind); const lead=free.filter(m=>m.role===z.lead).sort((a,b)=>sc(b)-sc(a))[0]; const team=lead?[lead]:[];
+  free.filter(m=>m!==lead).sort((a,b)=>sc(b)-sc(a)).slice(0,2).forEach(m=>team.push(m)); return team.map(m=>m.id); }
+export function beginZone(zoneId, ids){ const e=zoneTeamOk(zoneId,ids); if(e) return e; ids.forEach(id=>S.dis.active.shifts[id]=(S.dis.active.shifts[id]||0)+1); return null; }
+export function finishZone(zoneId, stars, ids){ const a=S.dis.active, z=zoneDef(zoneId), st=zoneState(zoneId); st.state=stars>0?'done':'failed'; st.stars=stars;
+  const team=teamOf(ids||[]); const coins=Math.round((120+60*stars)*payMult()), mats=3+stars*3, rep=stars*5+(stars>0?2:0);
+  addCoins(coins); S.materials+=mats; S.town.rep+=rep; a.rewards.coins+=coins; a.rewards.mats+=mats; a.rewards.rep+=rep;
+  team.forEach(m=>addCrewXP(m,10+stars*6)); addStationXP(6+stars*4);
+  // a great job saves the structure outright
+  let saved=null; if(stars===3){ if(z.town&&S.town.damaged[z.town]&&!D.DISASTERS[a.type].zones.some(o=>o.id!==z.id&&o.town===z.town&&zoneState(o.id).state==='open')){ delete S.town.damaged[z.town]; a.town=a.town.filter(k=>k!==z.town); saved=D.TOWN[z.town].name; }
+    if(z.base){ const id=z.base.find(b=>S.buildings[b].dmg); if(id){ delete S.buildings[id].dmg; a.base=a.base.filter(b=>b!==id); saved=D.BUILDINGS[id].name; } } }
+  S.town.happy=Math.max(0,Math.min(100,S.town.happy+(stars-1)*3*(1+teamFx(team,'happy'))));
+  if(a.zones.every(q=>q.state!=='open')) toRebuild();
+  return {coins,mats,rep,saved}; }
+export function standDown(){ const a=S.dis.active; a.zones.forEach(z=>{ if(z.state==='open'){ z.state='failed'; S.town.happy=Math.max(0,S.town.happy-6); } }); toRebuild(); }
+function toRebuild(){ const a=S.dis.active; a.phase='rebuild'; a.rebuildStart=now(); }
+export function rebuildList(){ const out=[]; for(const k of Object.keys(S.town.damaged)) out.push({kind:'town',id:k,name:D.TOWN[k].name,icon:D.TOWN[k].icon,cost:D.TOWN[k].cost});
+  for(const id of D.BUILD_ORDER) if(S.buildings[id].dmg) out.push({kind:'base',id,name:D.BUILDINGS[id].name,icon:D.BUILDINGS[id].icon,cost:D.baseRepairCost(id,S.buildings[id].l)}); return out; }
+export function repairItem(kind,id){ const it=rebuildList().find(x=>x.kind===kind&&x.id===id); if(!it) return ['Nothing to fix'];
+  if(S.coins<it.cost[0]) return ['Not enough coins']; if(S.materials<it.cost[1]) return ['Not enough materials. Earn them on disaster zones and 2-star call-outs'];
+  S.coins-=it.cost[0]; S.materials-=it.cost[1]; if(kind==='town') delete S.town.damaged[id]; else delete S.buildings[id].dmg;
+  S.town.happy=Math.min(100,S.town.happy+(kind==='town'?8:3)); S.town.rep+=5; let done=null;
+  if(S.dis.active&&S.dis.active.phase==='rebuild'&&!rebuildList().length) done=endDisaster(); return [null,done]; }
+export function finishDisaster(){ const a=S.dis.active; if(!a||a.phase!=='rebuild'||rebuildList().length) return null; return endDisaster(); }
+function endDisaster(){ const a=S.dis.active; const good=a.zones.filter(z=>z.stars>0).length, stars=a.zones.reduce((x,z)=>x+z.stars,0);
+  const badges=8+stars*2; S.badges+=badges; S.town.rep+=10; S.dis.count++; S.dis.active=null; S.dis.next=now()+D.disasterGap();
+  S.nextCallAt=now()+8000; return {badges, stars, good, total:a.zones.length, rewards:a.rewards, type:a.type}; }
+function disasterTick(events){ const t=now(), a=S.dis.active;
+  if(!a){ if(S.level>=D.DISASTER_UNLOCK && S.stats.calls>=3 && t>=S.dis.next){ const d=startDisaster(); if(d) events.push({disWarn:d}); } return; }
+  if(a.phase==='warn'&&t>=a.warnEnd){ disasterHit(); events.push({disHit:a}); }
+  if(a.phase!=='rebuild') S.nextCallAt=Math.max(S.nextCallAt,t+20000);   // the pager goes quiet during a disaster
+}
 /* ---------- main tick: call every frame or so; returns events for the UI ---------- */
 export function tick(){ const events=[]; sizzleTick();
   const built=finishBuildings(); built.forEach(id=>events.push({built:id}));
   resolveCalls().forEach(r=>events.push({result:r}));
   if(now()>=S.nextCallAt){ const first=S.firstCallsDone===0&&!S.calls.some(c=>c.type==='bin');
     const c=spawnCall(first?'bin':null); S.nextCallAt=now()+D.callEvery(bl('comms'))*1000*rnd(.8,1.2); if(c) events.push({newCall:c}); }
-  rushTick(events); return events; }
+  if(!S.dis.active) rushTick(events); disasterTick(events); return events; }

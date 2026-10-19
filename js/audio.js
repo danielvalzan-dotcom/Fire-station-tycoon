@@ -68,6 +68,25 @@ export const Snd = { ctx:null, sfxBus:null, musicBus:null, noiseBuf:null, sprayG
   splash(){ this.noise(.35,{freq:1800,f2:500,q:.8,v:.07}); },
   cheer(dur=1.6,v=.6){ for(let i=0;i<4;i++) this.noise(dur,{freq:900+i*400,q:.9,v:.03*v,attack:.25,delay:i*.03}); for(let i=0;i<5;i++) this.tone(600+Math.random()*500,.25,{type:'triangle',v:.012*v,delay:Math.random()*dur*.7,f2:900+Math.random()*400}); },
   trophyUp(){ this.tone(midi(79),.12,{type:'square',v:.03,lp:3000}); this.tone(midi(84),.12,{type:'square',v:.03,delay:.1,lp:3000}); this.tone(midi(91),.5,{type:'triangle',v:.05,delay:.2}); },
+  // ---- v3 action scenes ----
+  hydraulic(p){ if(this.limit('hyd',90)) return; this.tone(70+p*160,.12,{type:'sawtooth',v:.035,lp:500+p*900}); },
+  pop2(){ this.noise(.18,{freq:600,q:.7,v:.09}); this.tone(140,.25,{type:'square',v:.05,f2:60,lp:700}); },
+  cut(){ this.noise(.25,{freq:3200,f2:1400,q:3,v:.07}); this.tone(900,.2,{type:'sawtooth',v:.02,f2:400,lp:2500}); },
+  thud(){ this.tone(110,.18,{type:'triangle',v:.09,f2:55}); this.noise(.12,{freq:400,q:.8,v:.06}); },
+  crackle(){ if(this.limit('crk',140)) return; this.noise(.05+Math.random()*.05,{freq:1800+Math.random()*2500,q:4,v:.02+Math.random()*.02}); },
+  gasBeep(){ this.tone(2400,.05,{type:'square',v:.025,lp:5000}); },
+  sizzle(){ if(this.limit('szl',120)) return; this.noise(.18,{freq:5000,q:.8,v:.035}); },
+  rake(){ if(this.limit('rake',110)) return; this.noise(.08,{freq:900,q:1.5,v:.04}); },
+  creak(){ this.tone(180,.35,{type:'sawtooth',v:.03,f2:120,lp:600,attack:.05}); },
+  alarm(){ if(this.limit('alarm',2500)) return; for(let i=0;i<3;i++){ this.tone(660,.5,{type:'sawtooth',v:.035,f2:990,delay:i*.6,lp:2200,glide:.5}); } },
+  thunder(){ this.noise(2.2,{freq:180,f2:60,q:.5,v:.16,attack:.05}); this.noise(.4,{freq:900,q:.6,v:.08}); },
+  saw(on){ if(!this.ctx) return; if(!this.sawO){ const a=this.ctx, o=a.createOscillator(), g=a.createGain(), f=a.createBiquadFilter(); o.type='sawtooth'; o.frequency.value=95; f.type='lowpass'; f.frequency.value=1400; g.gain.value=0; o.connect(f).connect(g).connect(this.sfxBus); o.start(); this.sawO=o; this.sawG=g; }
+    this.sawG.gain.setTargetAtTime(on?.05:0,this.ctx.currentTime,.03); this.sawO.frequency.setTargetAtTime(on?(on>1?70:120):95,this.ctx.currentTime,.05); },
+  // looping weather bed: 'rain' | 'wind' | 'ash' | 'hail' | 'fog' | 'shake' | null
+  weather(type){ if(!this.ctx) return; const a=this.ctx;
+    if(!this.wxG){ const src=a.createBufferSource(); src.buffer=this.noiseBuf; src.loop=true; const f=a.createBiquadFilter(); f.type='bandpass'; f.Q.value=.6; const g=a.createGain(); g.gain.value=0; src.connect(f).connect(g).connect(this.sfxBus); src.start(); this.wxF=f; this.wxG=g; }
+    const cfg={rain:[2800,.07],hail:[3600,.08],wind:[500,.09],ash:[700,.05],fog:[300,.035],shake:[120,.09]}[type]||[800,0];
+    this.wxF.frequency.setTargetAtTime(cfg[0],a.currentTime,.4); this.wxG.gain.setTargetAtTime(cfg[1],a.currentTime,.8); this.wxType=type; },
   trophyDown(){ this.tone(midi(67),.15,{type:'triangle',v:.04}); this.tone(midi(62),.35,{type:'triangle',v:.04,delay:.14}); },
 };
 

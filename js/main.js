@@ -1,10 +1,12 @@
-// Firey Station Tycoon v2: UI controller. Fictional game. Not affiliated with any fire service.
+// Firey Station Tycoon v3: UI controller. Fictional game. Not affiliated with any fire service.
 import * as D from './data.js';
 import * as G from './state.js';
 import { S } from './state.js';
 import { Snd, Music, setAudioPrefs } from './audio.js';
 import { BaseScene } from './scene.js';
-import { avatarSVG } from './avatar.js';
+import { avatarSVG, headSVG, headURL, isElite } from './avatar.js';
+import { runAction } from './action.js';
+import { Weather } from './weather.js';
 import { runMinigame } from './minigame.js';
 import { Backend } from './backend.js';
 const $=s=>document.querySelector(s), fmt=D.fmt, fmtTime=D.fmtTime;
@@ -21,7 +23,8 @@ const boot=G.load(); setAudioPrefs(S.prefs);
 let scene; const world=$('#world');
 await document.fonts.load('40px "Lilita One"').catch(()=>{});
 scene=new BaseScene(world,{ onSelect:id=>openBuilding(id), onTapEmpty:()=>closeSheet() });
-window.FST={ S:()=>S, G, D, scene, Snd, Music, openPanel:(v,a)=>openPanel(v,a), openBuilding:id=>openBuilding(id) };
+const weather=new Weather($('#wx'), world);
+window.FST={ S:()=>S, G, D, scene, Snd, Music, weather, openPanel:(v,a)=>openPanel(v,a), openBuilding:id=>openBuilding(id), handle:e=>handle(e) };
 
 /* ---------- labels over buildings ---------- */
 const labelsEl=$('#labels'); const labels={};
@@ -45,6 +48,8 @@ function hud(){
   $('#builders').innerHTML=`👷 <b>${S.builders-G.buildersBusy()}/${S.builders}</b>`;
   const open=S.calls.filter(c=>c.state==='open').length; const cb=$('#btnCalls .count'); cb.textContent=open; cb.style.display=open?'':'none';
   const out=S.calls.filter(c=>c.state==='out').length; $('#trucks').innerHTML=`🚒 <b>${G.freeAppliances()}/${D.appliances(G.bl('engine'))}</b>`;
+  $('#town').innerHTML=`😊 <b>${Math.round(S.town.happy)}%</b> 🧱 <b>${S.materials}</b>`;
+  disBanner();
   const q=G.currentQuest(); const qe=$('#quest');
   if(q){ const done=q.done(); const h=`<span class="qi">🎯</span><span class="qt">${q.text}</span>${done?`<button class="gbtn green sm" data-act="claim">Claim ${ICON.badge}${q.reward}</button>`:`<span class="qr">${ICON.badge}${q.reward}</span>`}`;
     if(qe._h!==h){ qe.innerHTML=h; qe._h=h; } qe.classList.toggle('ready',done); qe.style.display=''; } else qe.style.display='none';
@@ -94,7 +99,7 @@ function openPanel(v,arg){ const was=view; view=v; viewArg=arg; if(v!=='dispatch
   Music.setTrack(v==='compete'?'comp':'base'); }
 function closePanel(){ view=null; $('#panel').classList.remove('on'); Music.setTrack('base'); }
 function renderPanel(reset){ if(!view) return; const body=$('#panel .pbody'), st=reset?0:body.scrollTop; const title=$('#panel .ptitle');
-  const R={calls:pCalls,dispatch:pDispatch,crew:pCrew,crewDetail:pCrewDetail,compete:pCompete,leader:pLeader,shop:pShop,settings:pSettings}[view];
+  const R={calls:pCalls,dispatch:pDispatch,crew:pCrew,crewDetail:pCrewDetail,compete:pCompete,leader:pLeader,shop:pShop,settings:pSettings,disaster:pDisaster,zone:pZone}[view];
   const [t,h]=R(viewArg); title.innerHTML=t; body.innerHTML=h; body.scrollTop=st; liveTimers(body); }
 function pCalls(){ const open=S.calls.filter(c=>c.state==='open'), out=S.calls.filter(c=>c.state==='out');
   let h=`<div class="infobar">🚒 Free trucks <b>${G.freeAppliances()}/${D.appliances(G.bl('engine'))}</b> · 💺 ${D.seats(G.bl('engine'))} seats each · 👥 ${S.crew.filter(c=>!c.busy).length} crew free</div>`;
@@ -118,21 +123,22 @@ function pDispatch(id){ const call=S.calls.find(c=>c.id===id); if(!call||call.st
    <div class="reqbox"><div><small>MUST HAVE</small><div class="chips">${reqChips}</div></div>${t.bonus.length?`<div><small>BONUS (+6% each)</small><div class="chips">${bonusChips}</div></div>`:''}</div>
    <div class="meter"><div class="mlabel">Success chance <b style="color:${col}">${dispatchSel.length?pct+'%':'–'}</b></div><div class="mbar"><i style="width:${dispatchSel.length?pct:0}%;background:${col}"></i></div>
    <div class="mstats"><span>💺 ${dispatchSel.length}/${e.seats}</span><span>⏱ ${fmtTime(e.time)}</span><span>${C(e.reward)}</span><span>💪 ${e.power}/${t.diff}</span></div></div>
-   <div class="row2"><button class="gbtn blue" data-act="autopick" data-id="${id}">✨ Best team</button><button class="gbtn red ${e.ok&&G.freeAppliances()>0?'':'cant'}" data-act="dispatch" data-id="${id}">🚒 DISPATCH!</button></div>
+   <div class="row2"><button class="gbtn blue" data-act="autopick" data-id="${id}">✨ Best team</button><button class="gbtn red ${e.ok&&G.freeAppliances()>0?'':'cant'}" data-act="dispatch" data-id="${id}">🚒 RESPOND!</button></div>
+   <div class="row2 autorow">${G.canAuto(call)?`<button class="gbtn purple sm2 ${e.ok&&G.freeAppliances()>0?'':'cant'}" data-act="dispatchauto" data-id="${id}">⚡ Auto-resolve (${pct}% · ${fmtTime(e.time)})</button>`:`<div class="note sm">🎮 You'll play this job hands-on: <b>${D.SCENES[t.scene].name}</b>.${t.tier<=D.AUTO_TIER?' Auto-resolve unlocks after your first go.':''}${S.stars[t.id]?` Best: ${'★'.repeat(S.stars[t.id])}`:''}</div>`}</div>
    <div class="sect">Pick your crew (tap to add)</div><div class="pick">`;
   const free=S.crew.slice().sort((a,b)=>G.memberPower(b,t.skills)-G.memberPower(a,t.skills));
   for(const m of free){ const sel=dispatchSel.includes(m.id); const p=Math.round(G.memberPower(m,t.skills)); const need=t.req[m.role];
-    h+=`<div class="prow ${sel?'sel':''} ${m.busy?'busy':''}" data-act="${m.busy?'':'toggle'}" data-id="${m.id}">${avatarSVG(m,44)}<div class="pinfo"><b>${m.name}</b><small>${D.ROLES[m.role].short} · Lv ${m.lvl}${need?' · <span class="need">needed</span>':''}</small></div><div class="ppow">💪${p}</div>${m.busy?'<span class="btag">On a job</span>':`<div class="tick">${sel?'✓':'+'}</div>`}</div>`; }
+    h+=`<div class="prow ${sel?'sel':''} ${m.busy?'busy':''}" data-act="${m.busy?'':'toggle'}" data-id="${m.id}">${avatarSVG(m,44)}<div class="pinfo"><b>${m.name}</b><small>${D.ROLES[m.role].short} · ${D.SPECIES[m.species].name} · Lv ${m.lvl}${need?' · <span class="need">needed</span>':''}</small></div><div class="ppow">💪${p}</div>${m.busy?'<span class="btag">On a job</span>':`<div class="tick">${sel?'✓':'+'}</div>`}</div>`; }
   h+='</div>'; return ['🚒 Dispatch',h]; }
 function crewCard(m){ const br=G.bestRarity(m); return `<div class="card r${br}" data-act="crewdetail" data-id="${m.id}">${avatarSVG(m,92)}<div class="clv">${m.lvl}</div>${m.sp>0?`<div class="sp">+${m.sp}</div>`:''}
-  <div class="cn">${m.name}</div><div class="cr" style="color:${D.ROLES[m.role].color}">${D.ROLES[m.role].short}</div><div class="cp">💪 ${G.overallPower(m)}</div>${m.busy?'<div class="btag">On a job</div>':''}</div>`; }
+  <div class="cn">${m.name}</div><div class="cs">${D.SPECIES[m.species].name}</div><div class="cr" style="color:${D.ROLES[m.role].color}">${D.ROLES[m.role].short}</div><div class="cp">💪 ${G.overallPower(m)}</div>${m.busy?'<div class="btag">On a job</div>':''}</div>`; }
 function pCrew(){ const n=S.crew.length, beds=G.crewBeds();
   let h=`<div class="infobar">🛏️ Beds <b>${n}/${beds}</b> · 🎓 Level cap <b>${G.crewCap()}</b> (Training Tower) · tap a card to level and gear up</div><div class="grid">`;
   for(const m of S.crew) h+=crewCard(m);
   h+=`<div class="card add" data-act="recruitmenu"><div class="plus">＋</div><div class="cn">Recruit</div><div class="cp">${C(G.nextRecruitCost())}</div></div></div>`; return [`👥 Crew roster`,h]; }
 function pCrewDetail(id){ const m=S.crew.find(c=>c.id===id); if(!m) return pCrew(); const role=D.ROLES[m.role]; const need=D.xpNeed(m.lvl), cap=G.crewCap(); const idx=S.crew.indexOf(m);
-  let h=`<div class="dcard r${G.bestRarity(m)}"><button class="nav l" data-act="crewdetail" data-id="${S.crew[(idx-1+S.crew.length)%S.crew.length].id}">‹</button>${avatarSVG(m,150)}<button class="nav r" data-act="crewdetail" data-id="${S.crew[(idx+1)%S.crew.length].id}">›</button>
-    <div class="dn">${m.name}</div><div class="dr" style="color:${role.color}">${role.icon} ${role.name}</div>
+  let h=`<div class="dcard r${G.bestRarity(m)}"><button class="nav l" data-act="crewdetail" data-id="${S.crew[(idx-1+S.crew.length)%S.crew.length].id}">‹</button>${avatarSVG(m,180,'determined')}<button class="nav r" data-act="crewdetail" data-id="${S.crew[(idx+1)%S.crew.length].id}">›</button>
+    <div class="dn">${m.name}</div><div class="dr" style="color:${role.color}">${role.icon} ${role.name}</div><div class="perk"><b>${D.SPECIES[m.species].name} · ${D.SPECIES[m.species].perk}</b><small>${D.SPECIES[m.species].desc}</small></div>
     <div class="xpline"><span class="lvb">Lv ${m.lvl}</span><div class="pbar"><i style="width:${m.lvl>=cap?100:m.xp/need*100}%"></i><span>${m.lvl>=cap?`Level cap ${cap}: upgrade the Training Tower`:`${m.xp}/${need} XP`}</span></div></div>
     <div class="row2"><div class="spbox">Skill points <b>${m.sp}</b></div><button class="gbtn green ${m.lvl>=cap||m.busy?'cant':''}" data-act="train" data-id="${m.id}">🏋️ Drill · ${C(G.trainCostFor(m))}</button></div></div>
     <div class="sect">Skills</div>`;
@@ -173,7 +179,8 @@ function pSettings(){ return ['⚙️ Settings',`
   <div class="stat"><span>Competitions</span><b>${S.comp.played} played · ${S.comp.wins} won</b></div>
   <div class="stat"><span>Player ID (for online play later)</span><b class="mono">${S.playerId.slice(0,14)}</b></div>
   <div class="about"><b>Firey Station Tycoon</b> · v${D.VERSION} prototype<br>A fictional game. Not affiliated with, or endorsed by, any fire service.<br>
-  3D engine: three.js (MIT). Font: Lilita One (SIL Open Font License). All art drawn in code; all sounds and music synthesised in code.</div>
+  3D engine: three.js (MIT). Font: Lilita One (SIL Open Font License). Crew portraits: original AI-assisted art made for this game; everything else drawn in code. All sounds and music synthesised in code.</div>
+  <button class="gbtn orange wide" data-act="disnow">🌪️ Trigger a disaster now (prototype)</button>
   <button class="gbtn red wide" data-act="reset">Reset progress</button>`]; }
 
 /* ---------- actions ---------- */
@@ -189,7 +196,18 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('[data-act
   case 'respond': dispatchSel=G.autoTeam(S.calls.find(c=>c.id===id)); openPanel('dispatch',id); Snd.pager(); break;
   case 'toggle': { const i=dispatchSel.indexOf(id); const seats=D.seats(G.bl('engine')); if(i>=0) dispatchSel.splice(i,1); else if(dispatchSel.length<seats) dispatchSel.push(id); else { err(`Only ${seats} seats on the truck`); break; } Snd.tap(); renderPanel(); break; }
   case 'autopick': dispatchSel=G.autoTeam(S.calls.find(c=>c.id===id)); renderPanel(); break;
-  case 'dispatch': { if(err(G.dispatch(id,dispatchSel))) break; Snd.siren(); scene.launchTruck(); const t=G.callType(S.calls.find(c=>c.id===id)); toast(`🚒 Crew en route to the ${t.name.toLowerCase()}!`,'good'); dispatchSel=[]; openPanel('calls'); after(); break; }
+  case 'dispatch': { const ids=dispatchSel.slice(); if(err(G.dispatch(id,ids,false))) break; Snd.siren(); scene.launchTruck(); dispatchSel=[]; closePanel(); after(); playCall(id, ids); break; }
+  case 'dispatchauto': { if(err(G.dispatch(id,dispatchSel,true))) break; Snd.siren(); scene.launchTruck(); const t=G.callType(S.calls.find(c=>c.id===id)); toast(`🚒 Crew en route to the ${t.name.toLowerCase()} (auto)`,'good'); dispatchSel=[]; openPanel('calls'); after(); break; }
+  case 'zone': zoneSel=G.autoZoneTeam(id); openPanel('zone',id); Snd.pager(); break;
+  case 'ztoggle': { const i=zoneSel.indexOf(id); if(i>=0) zoneSel.splice(i,1); else if(zoneSel.length<4) zoneSel.push(id); else { err('Max 4 crew per zone'); break; } Snd.tap(); renderPanel(); break; }
+  case 'zauto': zoneSel=G.autoZoneTeam(viewArg); renderPanel(); break;
+  case 'zgo': { const zid=viewArg, ids=zoneSel.slice(); if(err(G.beginZone(zid,ids))) break; Snd.siren(); closePanel(); playZone(zid, ids); break; }
+  case 'brace': { if(G.dis()&&G.dis().phase==='warn'){ G.dis().warnEnd=Date.now(); handle(G.tick()); } break; }
+  case 'standdown': modal('<h2>Stand down?</h2><p>Unattended zones will be badly damaged and the town won\'t be happy.</p>',[{label:'Stand down',cls:'red',fn:()=>{ G.standDown(); after(); openPanel('disaster'); }},{label:'Keep going',cls:'blue'}]); break;
+  case 'disfinish': { const r=G.finishDisaster(); if(r){ after(); disasterDone(r); } break; }
+  case 'repair': { const [er,done]=G.repairItem(b.dataset.k,id); if(err(er)) break; Snd.hammer(); setTimeout(()=>Snd.buildDone(),350); toast('🔨 Rebuilt! Town happiness up','gold'); after(); if(done) disasterDone(done); break; }
+  case 'disnow': { if(G.dis()){ err('A disaster is already on'); break; } const d=G.startDisaster(null,12); closePanel(); handle([{disWarn:d}]); break; }
+  case 'opendis': openPanel('disaster'); break;
   case 'speedcall': { const c=S.calls.find(x=>x.id===id); if(c&&!err(G.speedCall(c))){ Snd.speedUp(); handle(G.tick()); after(); } break; }
   case 'crewdetail': openPanel('crewDetail',id); Snd.pop(); break;
   case 'recruitmenu': recruitMenu(); break;
@@ -217,8 +235,11 @@ $('#badgePlus').addEventListener('click',()=>{ Snd.tap(); openPanel('shop'); });
 function recruitMenu(){ const cost=G.nextRecruitCost(); const full=S.crew.length>=G.crewBeds();
   modal(`<h2>Recruit a Firey</h2><p>${full?'<b>Quarters are full.</b> Upgrade Quarters & Kitchen for more beds.':`Cost ${C(cost)} · Beds ${S.crew.length}/${G.crewBeds()}`}</p><div class="rlist">${D.ROLE_ORDER.map(r=>{ const R=D.ROLES[r]; const have=S.crew.filter(c=>c.role===r).length;
      return `<button class="rrow" data-role="${r}" ${full?'disabled':''}><span class="ri" style="background:${R.color}">${R.icon}</span><span class="rt"><b>${R.name}</b><small>${R.skills.map(s=>s[1]).join(' · ')}</small></span><span class="rh">×${have}</span></button>`; }).join('')}</div>`,[{label:'Close',cls:'blue'}],'recruit');
-  $('#modal .rlist').addEventListener('click',e=>{ const b=e.target.closest('[data-role]'); if(!b) return; const [er,m]=G.recruit(b.dataset.role); if(err(er)) return; closeModal(); Snd.recruit();
-    modal(`<h2>Welcome aboard!</h2><div class="newcrew">${avatarSVG(m,140)}</div><p><b>${m.name}</b> joins as a <b style="color:${D.ROLES[m.role].color}">${D.ROLES[m.role].name}</b>.</p>`,[{label:'Sweet as',fn:()=>openPanel('crewDetail',m.id)}]); after(); }); }
+  $('#modal .rlist').addEventListener('click',e=>{ const b=e.target.closest('[data-role]'); if(!b) return; const role=b.dataset.role; if(S.coins<cost) return err('Not enough coins'); closeModal(); speciesPick(role); }); }
+function speciesPick(role){ const pool=D.SPECIES_ORDER.slice().sort(()=>Math.random()-.5).slice(0,3);
+  modal(`<h2>Who's joining?</h2><p>Three keen ${D.ROLES[role].name}s turned up for the interview.</p><div class="splist">${pool.map(sp=>{ const c={species:sp,role,gear:{helmet:0,coat:0,boots:0,ba:0}}; return `<button class="sprow" data-sp="${sp}">${avatarSVG(c,74)}<span><b>${D.SPECIES[sp].name}</b><i>${D.SPECIES[sp].perk}</i><small>${D.SPECIES[sp].desc}</small></span></button>`; }).join('')}</div>`,[{label:'Back',cls:'blue',fn:()=>recruitMenu()}],'recruit');
+  $('#modal .splist').addEventListener('click',e=>{ const b=e.target.closest('[data-sp]'); if(!b) return; if(performance.now()-modalAt<400) return; const [er,m]=G.recruit(role,b.dataset.sp); if(err(er)) return; closeModal(); Snd.recruit(); syncHeads();
+    modal(`<h2>Welcome aboard!</h2><div class="newcrew">${avatarSVG(m,170)}</div><p><b>${m.name}</b> the ${D.SPECIES[m.species].name} joins as a <b style="color:${D.ROLES[m.role].color}">${D.ROLES[m.role].name}</b>.</p><p class="fine">Perk: ${D.SPECIES[m.species].perk}. ${D.SPECIES[m.species].desc}</p>`,[{label:'Sweet as',fn:()=>openPanel('crewDetail',m.id)}]); after(); }); }
 
 async function visitBase(id){ const b=await Backend.getBase(id); if(!b) return;
   modal(`<h2>🏠 ${b.name}</h2><p>Station level ${b.level} · crew power ${b.crewPower}</p><div class="vgrid">${D.BUILD_ORDER.map(k=>`<div>${D.BUILDINGS[k].icon}<small>${D.BUILDINGS[k].name}</small><b>Lv ${b.buildings[k]}</b></div>`).join('')}</div><p class="fine">Simulated station. Real friend visits come with online play.</p>`,[{label:'Back',cls:'blue'}]); }
@@ -229,7 +250,7 @@ async function startComp(comp){ const team=G.compTeam(comp); if(team.length<3) r
   modal(`<h2>${comp.icon} ${comp.name}</h2><p>${comp.how}</p><div class="vs"><div class="vteam">${team.map(m=>avatarSVG(m,58)).join('')}<small>${S.stationName}<br>crew boost ${Math.round(norm*100)}%</small></div><div class="vsx">VS</div>
      <div class="vriv">${rivals.map(r=>`<div><b>${r.name}</b><small>${r.league} · ${ICON.trophy}${r.trophies}</small></div>`).join('')}</div></div>`,
     [{label:'🏁 Let\'s go!',cls:'green',fn:()=>{ Music.setTrack('comp'); Music.boost=10; Snd.rushStart();
-        runMinigame($('#mg'),comp,{norm,rivals,you:'You'},res=>finishComp(comp,team,rivals,res)); }},{label:'Not now',cls:'blue'}]); }
+        runMinigame($('#mg'),comp,{norm,rivals,you:'You',ld:G.leagueDiff(),perk:G.compPerk(comp,team)},res=>finishComp(comp,team,rivals,res)); }},{label:'Not now',cls:'blue'}]); }
 async function finishComp(comp,team,rivals,res){ Music.boost=0; const r=G.applyComp(comp,res.place,team);
   const mine=res.rows.find(x=>x.you)?.value, pbOld=S.comp.best[comp.id]; let pb=false; if(mine!=null&&mine<99){ const better=comp.game==='catch'?(pbOld==null||mine>pbOld):(pbOld==null||mine<pbOld); if(better){ S.comp.best[comp.id]=mine; pb=pbOld!=null; } }
   await Backend.submitCompResult({ playerId:S.playerId, compId:comp.id, score:res.perf, place:res.place, trophiesDelta:r.dT, ts:Date.now() }); lbCache=null;
@@ -241,6 +262,57 @@ async function finishComp(comp,team,rivals,res){ Music.boost=0; const r=G.applyC
     ${pb?`<p class="gold">🏅 New personal best!</p>`:''}${r.promoted?`<p class="gold">⬆️ Promoted to ${D.LEAGUES[G.league()].name} League!</p>`:''}${crateH}`,[{label:'Back to station',fn:()=>openPanel('compete')}],'results');
   Music.setTrack('base'); after(); }
 
+/* ---------- v3: hands-on call-outs ---------- */
+const SCENE_VARIANT = { bin:'bin', car:'car', house:'house', unit:'unit', factory:'factory', cat:'tree', cliff:'cliff', tanker:'tanker', mva:'mva' };
+function enRoute(text, then){ const el=$('#enroute'); el.innerHTML=`<div class="er-card"><div class="er-truck">🚒</div><b>${text}</b><small>Lights and sirens...</small></div>`; el.classList.add('on'); setTimeout(()=>{ el.classList.remove('on'); then(); },1500); }
+function playCall(callId, ids){ const call=S.calls.find(c=>c.id===callId); if(!call) return; const t=G.callType(call); const team=G.teamOf(ids);
+  const help=G.teamHelp(team, t.kind); const diff=Math.max(.7,Math.min(1.5,t.diff/Math.max(1,call.power||t.diff)));
+  Music.boost=14; enRoute(`En route: ${t.icon} ${t.name}`,()=>{ Snd.siren();
+    runAction($('#act'),{scene:t.scene,title:t.name,icon:t.icon,tier:t.tier,diff,help,variant:SCENE_VARIANT[t.id]||t.id},res=>{ Music.boost=0;
+      const r=G.finishAction(callId,res.stars); if(r) handle([{result:r}]); scene.returnTruck(); after(); }); }); }
+/* ---------- v3: disasters ---------- */
+let zoneSel=[];
+const ZPOS = { ridge:[70,70], school:[230,60], base:[180,205], levee:[60,150], caravan:[285,140], highway:[300,60], shops:[150,95], units:[60,230], roofs:[100,80], tree:[280,190], pub:[140,70], gasmain:[270,90], injured:[70,200], plant:[270,70], valve:[300,170], workers:[90,90] };
+function townMap(a){ const def=D.DISASTERS[a.type];
+  let h=`<svg class="tmap" viewBox="0 0 360 270"><defs><linearGradient id="tmg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9bd06f"/><stop offset="1" stop-color="#76b552"/></linearGradient></defs>
+   <rect width="360" height="270" rx="16" fill="url(#tmg)"/><path d="M-10 120 C80 100 120 180 200 160 S320 200 370 170" stroke="#4f9ed8" stroke-width="18" fill="none" opacity=".85"/>
+   <path d="M0 40 H360 M120 0 V270 M0 245 H360 M250 40 V270" stroke="#e8dfc8" stroke-width="10"/>${[[30,20],[150,20],[270,15],[20,190],[150,200],[280,230],[200,120]].map(([x,y])=>`<rect x="${x}" y="${y}" width="26" height="18" rx="3" fill="#f1d9b5" stroke="#8a6a4a"/><path d="M${x-3} ${y} L${x+13} ${y-10} L${x+29} ${y}Z" fill="#c0392b"/>`).join('')}`;
+  for(const z of def.zones){ const st=G.zoneState(z.id), [x,y]=ZPOS[z.id]||[180,135]; const col=st.state==='open'?'#e53935':st.state==='done'?'#43a047':'#757575';
+    h+=`<g class="zpin ${st.state}" data-act="${st.state==='open'&&a.phase==='active'?'zone':''}" data-id="${z.id}"><circle cx="${x}" cy="${y}" r="22" fill="${col}" stroke="#fff" stroke-width="4">${st.state==='open'?'<animate attributeName="r" values="20;25;20" dur="1.2s" repeatCount="indefinite"/>':''}</circle>
+      <text x="${x}" y="${y+7}" text-anchor="middle" font-size="20">${z.id==='base'?'🚒':D.SCENES[z.task]?{firebreak:'🔥',hose:'🔥',sandbag:'🌊',ladder:'🪜',chainsaw:'🌳',tarp:'🏠',rubble:'🧱',gas:'💨',cpr:'❤️',hazmat:'☣️',extricate:'🚗'}[z.task]:'❗'}</text></g>`; }
+  return h+'</svg>'; }
+function pDisaster(){ const a=G.dis(); if(!a){ return ['🌤️ All clear',`<div class="empty">No disaster right now. The town's calm... for now.</div><div class="stat"><span>Town happiness</span><b>${Math.round(S.town.happy)}%</b></div><div class="stat"><span>Reputation</span><b>${S.town.rep}</b></div><div class="stat"><span>Materials</span><b>🧱 ${S.materials}</b></div>`]; }
+  const def=D.DISASTERS[a.type]; let h=`<div class="dishead ${a.phase}"><div class="disic">${def.icon}</div><div><b>${def.name}</b><small>${def.warn}</small></div></div>`;
+  if(a.phase==='warn') return [`⚠️ ${def.name}`, h+`<div class="infobar">⏳ Impact in <b data-end="${a.warnEnd}"></b>. Crews are gearing up.</div><button class="gbtn red wide" data-act="brace">🚨 Brace! Start now</button>`];
+  if(a.phase==='active'){ const open=a.zones.filter(z=>z.state==='open').length;
+    h+=townMap(a)+`<div class="sect">Damaged zones · ${open} still need crews · tap a red pin or a card</div>`;
+    for(const z of def.zones){ const st=G.zoneState(z.id); h+=`<div class="ccard zcard ${st.state}" data-act="${st.state==='open'?'zone':''}" data-id="${z.id}"><div class="cic">${z.id==='base'?'🚒':def.icon}</div><div class="cinfo"><div class="cname">${z.name}</div>
+      <div class="chips">${roleChip(z.lead,1,S.crew.some(m=>m.role===z.lead&&G.shiftsLeft(m)>0))}<span class="chip">🎮 ${D.SCENES[z.task].name}</span></div><div class="csub">${st.state==='open'?(z.base?'Your own station is hit!':`Protects: ${D.TOWN[z.town]?.name||''}`):st.state==='done'?'★'.repeat(st.stars)+' Sorted':'Lost'}</div></div>${st.state==='open'?'<div class="go">›</div>':''}</div>`; }
+    h+=`<button class="gbtn wide sm2" data-act="standdown">🏳️ Stand down remaining zones</button>`; return [`${def.icon} ${def.name}`,h]; }
+  const list=G.rebuildList(); h+=`<div class="rewards"><span>${C(a.rewards.coins)}</span><span>🧱 <b>${a.rewards.mats}</b></span><span>⭐ <b>${a.rewards.rep}</b> rep</span></div><div class="sect">Rebuild · you have ${C(S.coins)} and 🧱 ${S.materials}</div>`;
+  if(!list.length) h+=`<div class="empty">Nothing was damaged. Your crews saved every street!</div><button class="gbtn green wide" data-act="disfinish">🎉 Celebrate with the town</button>`;
+  for(const it of list){ const ok=S.coins>=it.cost[0]&&S.materials>=it.cost[1]; h+=`<div class="ccard"><div class="cic">${it.icon}</div><div class="cinfo"><div class="cname">${it.name}</div><div class="csub">${it.kind==='base'?'Your station · works one level lower until fixed':'Town · residents are doing it tough'}</div></div><button class="gbtn sm ${ok?'green':'cant'}" data-act="repair" data-k="${it.kind}" data-id="${it.id}">🔨 ${C(it.cost[0])}<br>🧱 ${it.cost[1]}</button></div>`; }
+  h+=`<p class="fine">Earn 🧱 materials from disaster zones and 2-star call-outs. Rebuilding lifts town happiness, which boosts pay.</p>`; return ['🔨 Rebuild the town',h]; }
+function pZone(zid){ const a=G.dis(); if(!a||a.phase!=='active'){ setTimeout(()=>openPanel('disaster')); return ['','']; } const z=G.zoneDef(zid), sc=D.SCENES[z.task]; const err0=G.zoneTeamOk(zid,zoneSel);
+  let h=`<div class="dhead"><div class="cic big">${z.id==='base'?'🚒':D.DISASTERS[a.type].icon}</div><div><div class="cname">${z.name}</div><div class="blurb">${sc.name}: ${sc.how}</div></div></div>
+   <div class="reqbox"><div><small>LEADER NEEDED</small><div class="chips">${roleChip(z.lead,1,zoneSel.some(i=>S.crew.find(c=>c.id===i)?.role===z.lead))}</div></div><div><small>CREW (1-4) · each Firey can work 2 zones</small></div></div>
+   <div class="row2"><button class="gbtn blue" data-act="zauto">✨ Best team</button><button class="gbtn red ${err0?'cant':''}" data-act="zgo">🚨 GO!</button></div><div class="sect">Pick your crew</div><div class="pick">`;
+  for(const m of S.crew){ const sel=zoneSel.includes(m.id), left=G.shiftsLeft(m); h+=`<div class="prow ${sel?'sel':''} ${left<1?'busy':''}" data-act="${left<1?'':'ztoggle'}" data-id="${m.id}">${avatarSVG(m,44)}<div class="pinfo"><b>${m.name}</b><small>${D.ROLES[m.role].short} · ${D.SPECIES[m.species].perk}${m.role===z.lead?' · <span class="need">leader</span>':''}</small></div>${left<1?'<span class="btag">Exhausted</span>':`<div class="tick">${sel?'✓':'+'}</div>`}</div>`; }
+  return ['🚨 Zone response',h+'</div>']; }
+function playZone(zid, ids){ const a=G.dis(), z=G.zoneDef(zid), team=G.teamOf(ids); const help=G.teamHelp(team, z.kind);
+  const variant={hose:z.id==='base'?'house':'house',ladder:'flood',extricate:'mva'}[z.task]; Music.boost=20;
+  enRoute(`${D.DISASTERS[a.type].icon} ${z.name}`,()=>runAction($('#act'),{scene:z.task,title:z.name,icon:D.DISASTERS[a.type].icon,tier:2+Math.min(2,S.dis.count),diff:1.1,help,variant,people:z.task==='ladder'?2:undefined},res=>{
+    const r=G.finishZone(zid,res.stars,ids); res.stars?Snd.callWin():Snd.callFail(); toast(`${res.stars?'✅':'😬'} ${z.name}: ${'★'.repeat(res.stars)||'no stars'} · +${fmt(r.coins)} coins, +${r.mats} 🧱${r.saved?` · ${r.saved} saved from damage!`:''}`, res.stars?'good':'bad');
+    Music.boost=18; after(); openPanel('disaster'); })); }
+function disBanner(){ const a=G.dis(), el=$('#disBanner'); if(!a){ el.style.display='none'; return; } const def=D.DISASTERS[a.type]; let h;
+  if(a.phase==='warn') h=`⚠️ <b>${def.name.toUpperCase()} WARNING</b> · <span data-end="${a.warnEnd}"></span>`;
+  else if(a.phase==='active') h=`${def.icon} <b>${def.name}</b> · ${a.zones.filter(z=>z.state==='open').length} zones need crews`;
+  else h=`🔨 <b>Rebuild</b> · ${G.rebuildList().length} repairs to do`;
+  el.className='disb '+a.phase; el.style.display=''; if(el._h!==h){ el.innerHTML=h; el._h=h; } }
+$('#disBanner').addEventListener('click',()=>{ Snd.tap(); openPanel('disaster'); });
+function disasterDone(r){ const def=D.DISASTERS[r.type]; Snd.win(); setTimeout(()=>Snd.trophyUp(),1200);
+  modal(`<h2 class="gold">🏆 Town rebuilt!</h2><p>The ${def.name.toLowerCase()} is behind us. Snag Flats owes you a few cold ones.</p><div class="rewards"><span>${B(r.badges)}</span><span>⭐ ${'★'.repeat(Math.min(3,Math.round(r.stars/Math.max(1,r.total))))} avg</span></div><div class="stat"><span>Zones handled</span><b>${r.good}/${r.total}</b></div><div class="stat"><span>Town happiness</span><b>${Math.round(S.town.happy)}%</b></div>`,[{label:'Back to work',fn:()=>{ closePanel(); }}],'results'); }
+
 /* ---------- events from the game tick ---------- */
 function handle(evts){ for(const e of evts){
   if(e.built){ Snd.buildDone(); toast(`🎉 ${D.BUILDINGS[e.built].name} is now level ${G.bl(e.built)}!`,'gold'); scene.bounce(e.built); }
@@ -251,29 +323,33 @@ function handle(evts){ for(const e of evts){
   if(e.result?.stationUps?.length) setTimeout(()=>{ toast(`🏅 Station level ${S.level}! +5 badges`,'gold'); Snd.level(); },900);
   if(e.rushStart){ Snd.rushStart(); Music.boost=24; toast('🚨 RUSH HOUR! 3 jobs at double pay. Clear them all for +10 badges','bad'); }
   if(e.rushWin){ Snd.win(); Music.boost=0; toast('🏆 Rush Hour smashed! +10 badges','gold'); }
+  if(e.disWarn){ const d=D.DISASTERS[e.disWarn.type]; Snd.alarm(); Music.boost=18; toast(`⚠️ ${d.icon} ${d.name.toUpperCase()} WARNING! ${d.warn}`,'bad'); }
+  if(e.disHit){ const d=D.DISASTERS[e.disHit.type]; Snd.alarm(); Snd.thunder(); toast(`${d.icon} The ${d.name.toLowerCase()} has hit! Send crews to each zone.`,'bad'); setTimeout(()=>{ if(!view&&!$('#act').classList.contains('on')) openPanel('disaster'); },900); }
   if(e.rushLose){ Snd.lose(); Music.boost=0; toast(`Rush Hour over: ${e.done}/3. She'll be right next time!`); }
 } if(evts.length) after(true); }
-function after(fromTick){ hud(); syncScene(); if(view&&!(fromTick&&view==='dispatch')) renderPanel(); renderSheet(); G.save(); }
-function syncScene(){ for(const id of D.BUILD_ORDER){ const i=G.bInfo(id); scene.setBuilding(id,i.l,{upgrading:!!i.up,locked:i.locked}); } scene.setXmas?.(S.xmas); }
+function after(fromTick){ hud(); syncScene(); syncWeather(); if(view&&!(fromTick&&view==='dispatch')) renderPanel(); renderSheet(); G.save(); }
+function syncScene(){ for(const id of D.BUILD_ORDER){ const i=G.bInfo(id); scene.setBuilding(id,i.l,{upgrading:!!i.up,locked:i.locked}); scene.setDamage(id,i.dmg&&i.l>0); } scene.setXmas?.(S.xmas); }
+function syncWeather(){ const a=G.dis(); const wx=a&&a.phase==='active'?D.DISASTERS[a.type].wx:null; weather.set(wx); scene.setMood(wx); if(!wx&&Music.boost===18) Music.boost=0; }
+function syncHeads(){ scene.setHeads(S.crew.slice(0,6).map(c=>({url:headURL(c.species,isElite(c)), svg:headSVG(c)}))); }
 function collectSizzle(){ const n=G.collectSizzle(); if(n){ Snd.collect(); toast(`🌭 Sausage sizzle takings: +${fmt(n)} coins`,'gold'); after(); } }
 
 /* ---------- loop ---------- */
 let last=performance.now(), acc=0, accS=0;
 function frame(t){ const dt=Math.min(.1,(t-last)/1000); last=t; acc+=dt; accS+=dt;
-  scene.update(dt); placeLabels();
+  scene.update(dt); weather.update(dt); placeLabels();
   if(acc>=.25){ acc=0; handle(G.tick()); hud(); liveTimers(); }
   if(accS>=5){ accS=0; G.save(); }
   requestAnimationFrame(frame); }
-syncScene(); hud();
+syncScene(); syncWeather(); syncHeads(); hud();
 document.addEventListener('visibilitychange',()=>{ if(document.hidden) G.save(); });
 window.addEventListener('pagehide',()=>G.save());
 
 /* ---------- welcome ---------- */
 const away=(Date.now()-S.lastSeen)/1000;
 if(boot.fresh){
-  modal(`<div class="logo">Firey<span>Station Tycoon</span></div><p>G'day, Boss! You've taken over <b>Snag Flats Station</b>: a tired engine bay, four keen Fireys and a sausage sizzle.</p>
-    ${boot.migrated?`<div class="note gold">Thanks for playing v1! Your old progress is now <b>${fmt(boot.migrated.coins)} coins</b> and <b>${boot.migrated.badges} badges</b>.</div>`:''}
-    <p>Answer call-outs, upgrade your station, level and gear up your crew, and beat rival stations at the comps.</p><p class="fine">Fictional game, original art. Not affiliated with any fire service.</p>`,
+  modal(`<div class="logo">Firey<span>Station Tycoon</span></div><p>G'day, Boss! You've taken over <b>Snag Flats Station</b>: a tired engine bay, four keen Aussie animal Fireys and a sausage sizzle.</p>
+    ${boot.migrated?.fromV2?`<div class="note gold">Welcome to v3! Your station, coins and trophies came across, and your ${boot.migrated.crew} crew are now Aussie animal Fireys.</div>`:boot.migrated?`<div class="note gold">Thanks for playing v1! Your old progress is now <b>${fmt(boot.migrated.coins)} coins</b> and <b>${boot.migrated.badges} badges</b>.</div>`:''}
+    <p>Get hands-on at call-outs, save the town when disasters hit, upgrade your station, gear up your crew and beat rival stations at the comps.</p><p class="fine">Fictional game, original art. Not affiliated with any fire service.</p>`,
     [{label:'🚒 Start shift',fn:()=>{ Snd.unlock(); S.nextCallAt=Date.now()+1500; G.save(); }}],'welcome');
 } else { const evts=G.tick(); const res=evts.filter(e=>e.result).map(e=>e.result); const built=evts.filter(e=>e.built).map(e=>e.built);
   if(away>120 && (res.length||built.length||S.sizzle.stored>=1)){

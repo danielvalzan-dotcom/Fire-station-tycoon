@@ -204,6 +204,43 @@ svg{display:inline-block;vertical-align:middle}
 .mg-lr .mg-r{background:linear-gradient(#ff7b62,#cf2b17)}.mg-lr .hit{transform:translateY(4px) scale(.97)}
 #loading{position:absolute;inset:0;display:grid;place-items:center;background:#5fa043;z-index:50;font-family:var(--f);font-size:28px;color:#fff;text-shadow:0 3px 0 #2b5a1a}
 #loading small{display:block;font-family:var(--ui);font-size:12px;text-align:center;margin-top:8px;text-shadow:none}
+
+/* ---- v3 ---- */
+.av{position:relative;display:inline-block;line-height:0;border-radius:14px;overflow:hidden;flex:none}
+.av>svg{display:block}.av>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.av.r2{box-shadow:inset 0 0 0 2px #4aa3ff}.av.r3{box-shadow:inset 0 0 0 3px #b05ce6}.av.r4{box-shadow:inset 0 0 0 3px #ffb300,0 0 12px #ffcf3a}
+.rchip{position:absolute;left:3px;bottom:3px;z-index:2;font:900 10px/1 system-ui;color:#fff;padding:3px 5px;border-radius:8px;border:2px solid #fff;text-shadow:0 1px 0 #0006}
+.gpips{position:absolute;right:3px;top:3px;z-index:2;display:flex;flex-direction:column;gap:2px}.gpips i{width:7px;height:7px;border-radius:50%;border:1.5px solid #fff;display:block}
+.cs{font-size:11px;font-weight:800;color:#6a4b2a;margin-top:-2px}
+.perk{background:#fffaf0;border:2px solid var(--ink);border-radius:12px;padding:6px 10px;margin:6px 0;text-align:center}.perk b{display:block;font-size:13px}.perk small{font-size:12px;color:#5a4630}
+.splist{display:flex;flex-direction:column;gap:8px;margin:10px 0}.sprow{display:flex;align-items:center;gap:10px;background:linear-gradient(#fff,#f3e6c8);border:3px solid var(--ink);border-radius:14px;padding:6px;text-align:left;font:inherit;color:inherit}.sprow:active{transform:translateY(2px)}
+.sprow>span>*{display:block}.sprow b{font-size:17px}.sprow i{color:#c0392b;font-weight:800;font-style:normal;font-size:13px}.sprow small{font-size:12px;color:#5a4630}
+.note.sm{font-size:12px}.autorow{margin-top:6px}
+#townp{white-space:nowrap}
+#wx{position:absolute;inset:0;z-index:4;pointer-events:none;width:100%;height:100%}
+.shake{animation:shk .12s infinite}@keyframes shk{0%{transform:translate(2px,1px)}50%{transform:translate(-2px,-1px)}100%{transform:translate(1px,-2px)}}
+.disb{position:absolute;left:8px;right:62px;top:calc(var(--st) + 126px);z-index:7;text-align:center;font-family:var(--f);font-size:15px;color:#fff;padding:7px 10px;border:3px solid var(--ink);border-radius:14px;text-shadow:0 2px 0 #0007;box-shadow:0 4px 0 rgba(0,0,0,.3)}
+.disb.warn{background:repeating-linear-gradient(45deg,#e53935 0 14px,#b71c1c 14px 28px);animation:pulse 1s infinite}.disb.active{background:linear-gradient(#ff8a00,#d84315)}.disb.rebuild{background:linear-gradient(#43a047,#2e7d32)}
+@keyframes pulse{50%{filter:brightness(1.25)}}
+.tmap{width:100%;display:block;border:3px solid var(--ink);border-radius:18px;margin:6px 0}.zpin{cursor:pointer}
+.dishead{display:flex;gap:10px;align-items:center;background:#2b2f3a;color:#fff;border-radius:14px;padding:8px 10px}.dishead small{display:block;font-size:12px;opacity:.85}.disic{font-size:34px}
+.zcard.done{opacity:.7;background:#e3f6dc}.zcard.lost{opacity:.6;background:#eee}
+#act{position:absolute;inset:0;z-index:26;display:none;background:#222;touch-action:none}#act.on{display:block}
+.ac-cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.ac-top{position:absolute;left:8px;right:8px;top:calc(var(--st) + 8px);z-index:2;pointer-events:none;color:#fff;text-shadow:0 2px 0 #000a}
+.ac-t1{font-family:var(--f);font-size:20px;display:flex;justify-content:space-between;align-items:center}
+.ac-time{font-family:var(--f);font-size:22px;background:#0008;border-radius:10px;padding:2px 8px}.ac-time.low{color:#ff5252;animation:pulse .5s infinite}
+.ac-obj{font-size:13px;font-weight:800;margin:4px 0;background:#0007;border-radius:10px;padding:4px 8px}
+.ac-bar{height:12px;background:#0008;border:2px solid #fff;border-radius:8px;overflow:hidden}.ac-bar i{display:block;height:100%;background:linear-gradient(90deg,#ffcf3a,#43a047)}
+.ac-help{position:absolute;left:8px;right:8px;bottom:calc(var(--sb) + 56px);z-index:2;display:flex;flex-wrap:wrap;gap:4px;justify-content:center;pointer-events:none}
+.ac-help span{font-size:11px;font-weight:900;background:#fffd;border:2px solid var(--ink);border-radius:10px;padding:2px 7px}
+.ac-bail{position:absolute;right:10px;bottom:calc(var(--sb) + 12px);z-index:3}
+.ac-pop{position:absolute;left:0;right:0;top:40%;text-align:center;z-index:3;font-family:var(--f);font-size:30px;color:#fff;text-shadow:0 3px 0 #000;pointer-events:none}
+.ac-end{position:absolute;inset:0;z-index:5;display:none;align-items:center;justify-content:center;background:#0009;padding:16px}.ac-end.on{display:flex}
+.ac-card{background:linear-gradient(#fff,#f3e6c8);border:4px solid var(--ink);border-radius:22px;padding:16px;text-align:center;width:100%;max-width:340px}.ac-card h2{font-family:var(--f);margin:0}
+.ac-card .stars{font-size:46px;color:#bbb;margin:6px 0}.ac-card .stars .on{color:#ffb300;text-shadow:0 3px 0 #a66f00}
+#enroute{position:absolute;inset:0;z-index:27;display:none;align-items:center;justify-content:center;background:radial-gradient(#d32f2f,#4a0b0b)}#enroute.on{display:flex}
+.er-card{text-align:center;color:#fff;font-family:var(--f);font-size:22px}.er-card small{display:block;font-size:14px;opacity:.8}.er-truck{font-size:80px;animation:drive .4s infinite alternate}@keyframes drive{to{transform:translateX(14px) rotate(-2deg)}}
 </style>
 </head>
 <body>
@@ -217,8 +254,10 @@ svg{display:inline-block;vertical-align:middle}
       <div class="resbar badges"><svg viewBox="0 0 32 32"><use href="#ic-badge"/></svg><span id="badges">0</span><button class="plus" id="badgePlus" aria-label="Get badges">+</button></div>
     </div>
   </div>
-  <div id="hudMid"><div class="pill" id="trophies"></div><div class="pill" id="builders"></div><div class="pill" id="trucks"></div></div>
+  <div id="hudMid"><div class="pill" id="trophies"></div><div class="pill" id="builders"></div><div class="pill" id="trucks"></div><div class="pill" id="town"></div></div>
+  <canvas id="wx"></canvas>
   <div id="rush" style="display:none"></div>
+  <div id="disBanner" class="disb" style="display:none"></div>
   <div class="side"><button class="ibtn" id="btnSettings" aria-label="Settings">⚙️</button><button class="ibtn" id="btnSound" aria-label="Sound">🔊</button></div>
   <div id="quest"></div>
   <div id="hudBot">
@@ -231,6 +270,8 @@ svg{display:inline-block;vertical-align:middle}
   <div id="sheet"><div class="sbody"></div></div>
   <div id="panel"><div class="pwrap"><div class="phead"><div class="ptitle"></div><button class="xbtn" data-act="closepanel" aria-label="Close">✕</button></div><div class="pbody"></div></div></div>
   <div id="mg"></div>
+  <div id="act"></div>
+  <div id="enroute"></div>
   <div id="modal"></div>
   <div id="loading">Firey Station Tycoon<small>Loading the station…</small></div>
 </div>
