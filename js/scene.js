@@ -18,34 +18,41 @@ export const LAYOUT = {
 
 const matCache = new Map();
 // v5 "chunky toon" look: 3-step gradient ramp, slightly boosted saturation, rim light baked into emissive by the shader hook below.
-let RAMP=null; function ramp(){ if(RAMP) return RAMP; const d=new Uint8Array([70,70,70,255, 150,150,150,255, 215,215,215,255, 255,255,255,255]);
-  RAMP=new THREE.DataTexture(d,4,1,THREE.RGBAFormat); RAMP.magFilter=RAMP.minFilter=THREE.NearestFilter; RAMP.generateMipmaps=false; RAMP.needsUpdate=true; return RAMP; }
-const RIM={ value:0.55 };
+let RAMP=null; function ramp(){ if(RAMP) return RAMP; const d=new Uint8Array([105,105,105,255, 200,200,200,255, 255,255,255,255]);
+  RAMP=new THREE.DataTexture(d,3,1,THREE.RGBAFormat); RAMP.magFilter=RAMP.minFilter=THREE.NearestFilter; RAMP.generateMipmaps=false; RAMP.needsUpdate=true; return RAMP; }
+const RIM={ value:0.35 };
 function toonHook(m){ m.onBeforeCompile=sh=>{ sh.uniforms.rimK=RIM;
     sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform float rimK;')
       .replace('#include <opaque_fragment>','{ float rim=1.0-clamp(dot(normalize(normal),normalize(vViewPosition)),0.0,1.0); outgoingLight+=diffuseColor.rgb*pow(rim,3.0)*rimK; }\n#include <opaque_fragment>'); };
   m.customProgramCacheKey=()=>'toonrim'; return m; }
-function sat(color){ const c=new THREE.Color(color); const h={}; c.getHSL(h); if(h.s>.08) c.setHSL(h.h,Math.min(1,h.s*1.18+.04),h.l); return c; }
+function sat(color){ const c=new THREE.Color(color); const h={}; c.getHSL(h); if(h.s>.08) c.setHSL(h.h,Math.min(1,h.s*1.35+.08),Math.min(.86,h.l*1.05+.03)); return c; }
 function M(color, o={}){ const k=color+JSON.stringify(o); if(matCache.has(k)) return matCache.get(k);
   const m = toonHook(new THREE.MeshToonMaterial({ color:sat(color), gradientMap:ramp(), emissive:o.em??0x000000,
-    emissiveIntensity:o.ei??1, transparent:!!o.op, opacity:o.op??1, map:o.map||null }));
+    emissiveIntensity:o.ei??1, transparent:!!o.op, opacity:o.op??1, map:o.paint?o.map:null })); // v5.1: no realistic textures, only painted ones (hazard stripes)
   if(o.shine>70){ m.emissive=new THREE.Color(o.em??0x000000); } matCache.set(k,m); return m; }
 /* ---------- merge a group into one mesh per material + one outline hull (big draw-call saver) ---------- */
-const OUTLINE=(()=>{ const m=new THREE.MeshBasicMaterial({color:'#2b1d14',side:THREE.BackSide});
-  m.onBeforeCompile=sh=>{ sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>','vec3 transformed=position+normal*0.045;'); }; m.customProgramCacheKey=()=>'outl'; return m; })();
+const OUTLINE=(()=>{ const m=new THREE.MeshBasicMaterial({color:'#1e130c',side:THREE.BackSide});
+  m.onBeforeCompile=sh=>{ sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>','vec3 transformed=position+normal*0.075;'); }; m.customProgramCacheKey=()=>'outl'; return m; })();
 function bake(g, opt={}){ g.updateMatrixWorld(true); const inv=new THREE.Matrix4().copy(g.matrixWorld).invert(); const buckets=new Map(); const kill=[]; const outl=[];
   g.traverse(o=>{ if(!o.isMesh||o.userData.keep||o.isInstancedMesh) return; if(o.material&&o.material.visible===false) return; let p=o.parent, skip=false; while(p&&p!==g){ if(p.userData.keep) skip=true; p=p.parent; } if(skip) return; if(Array.isArray(o.material)) return;
     let geo=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone(); for(const k of Object.keys(geo.attributes)) if(!['position','normal','uv'].includes(k)) geo.deleteAttribute(k);
     if(!geo.attributes.uv) geo.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count*2),2));
     if(!geo.attributes.normal) geo.computeVertexNormals();
     geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv,o.matrixWorld)); const k=o.material.uuid; if(!buckets.has(k)) buckets.set(k,{m:o.material,gs:[],shadow:o.castShadow}); buckets.get(k).gs.push(geo);
-    if(opt.outline!==false&&!o.material.transparent&&!o.userData.noOutline){ const big=new THREE.Box3().setFromBufferAttribute(geo.attributes.position); const sz=big.getSize(new THREE.Vector3()); if(Math.max(sz.x,sz.y,sz.z)>.18&&sz.y>.03) outl.push(geo); }
+    if(opt.outline!==false&&!o.material.transparent&&!o.userData.noOutline){ const big=new THREE.Box3().setFromBufferAttribute(geo.attributes.position); const sz=big.getSize(new THREE.Vector3()); if(Math.max(sz.x,sz.y,sz.z)>.12&&sz.y>.03) outl.push(geo); }
     kill.push(o); });
   kill.forEach(o=>o.parent.remove(o));
   if(outl.length){ const og=mergeGeometries(outl.map(x=>{ const c=new THREE.BufferGeometry(); c.setAttribute('position',x.attributes.position); c.setAttribute('normal',x.attributes.normal); return c; }),false); if(og){ const om=new THREE.Mesh(og,OUTLINE); om.userData.outline=true; g.add(om); } }
-  for(const {m,gs,shadow} of buckets.values()){ const merged=mergeGeometries(gs,false); gs.forEach(x=>x.dispose()); if(!merged) continue; const mesh=new THREE.Mesh(merged,m); mesh.castShadow=shadow!==false&&!m.transparent; mesh.receiveShadow=true; g.add(mesh); } }
-function rbox(w,h,d,r,mat){ const g=new RoundedBoxGeometry(w,h,d,3,Math.min(r,w/2-.001,h/2-.001,d/2-.001)); const m=new THREE.Mesh(g,mat); m.castShadow=true; m.receiveShadow=true; return m; }
-function box(w,h,d,mat){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.castShadow=true; m.receiveShadow=true; return m; }
+  const meshes=[]; for(const {m,gs,shadow} of buckets.values()){ const merged=mergeGeometries(gs,false); gs.forEach(x=>x.dispose()); if(!merged) continue; const mesh=new THREE.Mesh(merged,m); meshes.push(mesh); mesh.castShadow=shadow!==false&&!m.transparent; mesh.receiveShadow=true; g.add(mesh); }
+  if(opt.toon!=null) toonDeform(g.children.filter(o=>o.isMesh&&(meshes.includes(o)||o.userData.outline)).map(o=>o.geometry), opt.toon); }
+/* v5.1 cartoon squash: squat body, oversized flared roof line, a seeded lean + twist so nothing is ruler-straight */
+function toonDeform(geos, seed){ if(!geos.length) return; const bb=new THREE.Box3(); geos.forEach(x=>{ x.computeBoundingBox(); bb.union(x.boundingBox); }); const H=Math.max(.3,bb.max.y), cx=(bb.min.x+bb.max.x)/2, cz=(bb.min.z+bb.max.z)/2;
+  const r=mulberry((seed*9301+49297)|0); r(); const lx=(r()-.5)*.13, lz=(r()-.5)*.13, tw=(r()-.5)*.17, sq=H>2.6?.86:.9;
+  for(const gg of geos){ const a=gg.attributes.position.array; for(let i=0;i<a.length;i+=3){ let x=a[i]-cx, y=a[i+1], z=a[i+2]-cz; const t=Math.min(1,Math.max(0,y/H)); const top=t<.55?0:((t-.55)/.45)**2*(3-2*(t-.55)/.45);
+      const k=1.04+.24*top-.05*Math.sin(t*Math.PI); const ang=tw*t, c=Math.cos(ang), s=Math.sin(ang); const nx=(x*c-z*s)*k, nz=(x*s+z*c)*k; a[i]=cx+nx+lx*y; a[i+1]=y*sq; a[i+2]=cz+nz+lz*y; }
+    gg.attributes.position.needsUpdate=true; gg.computeBoundingBox(); gg.computeBoundingSphere(); } }
+function rbox(w,h,d,r,mat){ r=Math.max(r,Math.min(w,h,d)*.32); const g=new RoundedBoxGeometry(w,h,d,2,Math.min(r,w/2-.001,h/2-.001,d/2-.001)); const m=new THREE.Mesh(g,mat); m.castShadow=true; m.receiveShadow=true; return m; }
+function box(w,h,d,mat){ const mn=Math.min(w,h,d); const m=new THREE.Mesh(mn>=.035?new RoundedBoxGeometry(w,h,d,1,Math.min(mn*.3,mn/2-.001)):new THREE.BoxGeometry(w,h,d),mat); m.castShadow=true; m.receiveShadow=true; return m; }
 function cyl(rt,rb,h,mat,seg=16){ const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),mat); m.castShadow=true; m.receiveShadow=true; return m; }
 function sph(r,mat,seg=16){ const m=new THREE.Mesh(new THREE.SphereGeometry(r,seg,Math.max(8,seg*0.75|0)),mat); m.castShadow=true; return m; }
 function at(o,x,y,z){ o.position.set(x,y,z); return o; }
@@ -188,7 +195,7 @@ export class BaseScene {
     if(lv<=0){ this.plot(inner,L,state.locked); }
     else { const before=new Map(Object.entries(this)); this['b_'+id](inner,L,lv,trim);
       for(const [k,v] of Object.entries(this)){ if(before.get(k)===v) continue; const mark=o=>{ if(o&&o.isObject3D){ o.userData.keep=true; } }; if(Array.isArray(v)) v.forEach(mark); else mark(v); }
-      bake(inner); }
+      if(id==='engine') this.emblem(inner,L,lv); bake(inner,{toon:id.length*7+lv}); }
     inner.scale.setScalar(lv>0?sc:1);
     // invisible hit box
     const hit=new THREE.Mesh(new THREE.BoxGeometry(L.w+.4,3.2,L.d+.4),new THREE.MeshBasicMaterial({visible:false})); hit.position.y=1.5; hit.userData.bid=id; grp.add(hit);
@@ -208,6 +215,10 @@ export class BaseScene {
     for(const [x,z] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ const p=box(.07,h,.07,m); at(p,x*(L.w/2+.15),h/2,z*(L.d/2+.15)); g.add(p); }
     for(const y of [.9,1.8,2.7]){ for(const z of [-1,1]){ const b=box(L.w+.3,.06,.06,m); at(b,0,y,z*(L.d/2+.15)); g.add(b);} for(const x of [-1,1]){ const b=box(.06,.06,L.d+.3,m); at(b,x*(L.w/2+.15),y,0); g.add(b);} }
     const plank=box(L.w+.3,.06,.35,M('#c58b4b')); at(plank,0,1.85,L.d/2+.15); g.add(plank); }
+  // v5.1 big chunky hose-nozzle emblem on the station front (original design)
+  emblem(g,L,lv){ const trim=lv>=7?'#ffcf33':lv>=4?'#ffe8a3':'#ffffff', ring=M(trim), disc=M('#e0523c',{shine:45}), noz=M('#56687a',{shine:50}); /* station's own materials */ const e=new THREE.Group(); const d=new THREE.Mesh(new THREE.CylinderGeometry(.62,.62,.16,28),disc); d.rotation.x=Math.PI/2; const rg=new THREE.Mesh(new THREE.TorusGeometry(.62,.1,10,28),ring);
+    const body=new THREE.Mesh(new THREE.CylinderGeometry(.13,.2,.62,14),noz); body.rotation.z=-.8; body.position.set(-.06,.02,.12); const tip=new THREE.Mesh(new THREE.CylinderGeometry(.08,.13,.18,12),noz); tip.rotation.z=-.8; tip.position.set(.2,.24,.12); const hose=new THREE.Mesh(new THREE.TorusGeometry(.2,.065,8,16,Math.PI*1.2),noz); hose.rotation.z=2.2; hose.position.set(-.3,-.24,.12);
+    for(const k of [0,1,2]){ const dr=new THREE.Mesh(new THREE.SphereGeometry(.07,10,8),ring); dr.scale.y=1.4; dr.position.set(.33+k*.1,.4+k*.08,.12); e.add(dr); } e.add(d,rg,body,tip,hose); e.scale.setScalar(1.55); e.position.set(0,2.75,L.d/2+.3); g.add(e); }
   sign(g,text,w,y,z,opts){ const t=new THREE.Mesh(new THREE.PlaneGeometry(w,w*.25),new THREE.MeshBasicMaterial({map:textTex(text,opts)})); at(t,0,y,z); g.add(t); return t; }
 
   b_engine(g,L,lv,trim){
@@ -256,7 +267,7 @@ export class BaseScene {
   }
   b_hazmat(g,L,lv,trim){
     const walls=rbox(L.w,1.5,L.d,.2,M('#f2f2ee',{shine:30})); at(walls,0,.75,0); g.add(walls);
-    const band=box(L.w+.02,.35,L.d+.02,M('#ffffff',{map:hazardTex(),shine:40})); band.material.map.repeat.set(4,1); at(band,0,.35,0); g.add(band);
+    const band=box(L.w+.02,.35,L.d+.02,M('#ffffff',{map:hazardTex(),paint:1,shine:40})); band.material.map.repeat.set(4,1); at(band,0,.35,0); g.add(band);
     const roof=rbox(L.w+.3,.3,L.d+.3,.12,M('#2f8f4f')); at(roof,0,1.62,0); g.add(roof);
     const tr=rbox(L.w+.32,.1,L.d+.32,.04,M(trim)); at(tr,0,1.46,0); g.add(tr);
     const dia=new THREE.Mesh(new THREE.PlaneGeometry(.75,.75),M('#ff8f00',{em:0x552200,ei:.3})); dia.rotation.z=Math.PI/4; at(dia,-.6,1.0,L.d/2+.03); g.add(dia);
@@ -350,7 +361,7 @@ export class BaseScene {
       if(Math.abs(this.panTarget.x-this.pan.x)+Math.abs(this.panTarget.y-this.pan.y)<.01) this.panTarget=null; this.updateCam(); }
     else if(this.vel&&(Math.abs(this.vel.x)+Math.abs(this.vel.y)>.01)&&!this.dragging){ this.pan.x+=this.vel.x*dt; this.pan.y+=this.vel.y*dt; this.vel.multiplyScalar(Math.pow(.9,dt*60)); this.updateCam(); }
     // bounce
-    for(const b of Object.values(this.buildings)){ if(b.bounceT){ b.bounceT+=dt; const k=b.bounceT; const s=1+Math.sin(k*18)*Math.exp(-k*7)*.12; b.group.scale.set(1/s**.5,s,1/s**.5); if(k>1){ b.bounceT=0; b.group.scale.set(1,1,1);} } }
+    for(const b of Object.values(this.buildings)){ if(!b.bounceT&&b.level>0){ const s=1+Math.sin(t*2.1+b.top*3)*.016; b.group.scale.set(1/s**.5,s,1/s**.5); } if(b.bounceT){ b.bounceT+=dt; const k=b.bounceT; const s=1+Math.sin(k*18)*Math.exp(-k*7)*.12; b.group.scale.set(1/s**.5,s,1/s**.5); if(k>1){ b.bounceT=0; b.group.scale.set(1,1,1);} } }
     if(this.ring.visible){ const s=1+Math.sin(t*5)*.04; this.ring.material.opacity=1; this.ring.scale.z=1; this.ring.rotation.z=t*.5; }
     // flag wave
     if(this.flagMesh){ const pos=this.flagMesh.geometry.attributes.position; const a=pos.array, b=this.flagBase;

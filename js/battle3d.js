@@ -2,6 +2,7 @@
 // Draw-call budget: one merged mesh + one outline per troop, all legs / blob shadows / projectiles / rubble are
 // InstancedMeshes, and every particle (water, sparks, dust, embers) is one Points object.
 import { THREE, M, OUTLINE, ramp, mulberry } from './scene.js';
+import { RoundedBoxGeometry } from './vendor/three.bundle.min.js';
 import { mergeGeometries } from './vendor/three.bundle.min.js';
 import * as TD from './towndata.js';
 import * as War from './war.js';
@@ -15,7 +16,7 @@ const V=new THREE.Vector3(), Q=new THREE.Quaternion(), S1=new THREE.Vector3(1,1,
 let VCMAT=null; const vcMat=()=>VCMAT||(VCMAT=new THREE.MeshToonMaterial({vertexColors:true,gradientMap:ramp()}));
 function part(geo,col,x,y,z,o={}){ const g=geo.index?geo.toNonIndexed():geo; if(o.rx) g.rotateX(o.rx); if(o.ry) g.rotateY(o.ry); if(o.rz) g.rotateZ(o.rz); if(o.s) g.scale(...o.s); g.translate(x,y,z);
   const c=new THREE.Color(col), n=g.attributes.position.count, a=new Float32Array(n*3); for(let i=0;i<n;i++){ a[i*3]=c.r; a[i*3+1]=c.g; a[i*3+2]=c.b; } g.setAttribute('color',new THREE.BufferAttribute(a,3)); for(const k of Object.keys(g.attributes)) if(!['position','normal','color'].includes(k)) g.deleteAttribute(k); return g; }
-const Sp=(r,s=12)=>new THREE.SphereGeometry(r,s,Math.max(6,s*.7|0)), Bx=(w,h,d)=>new THREE.BoxGeometry(w,h,d), Cy=(a,b,h,s=12)=>new THREE.CylinderGeometry(a,b,h,s), Co=(r,h,s=10)=>new THREE.ConeGeometry(r,h,s);
+const Sp=(r,s=12)=>new THREE.SphereGeometry(r,s,Math.max(6,s*.7|0)), Bx=(w,h,d)=>{ const m=Math.min(w,h,d); return m>=.04?new RoundedBoxGeometry(w,h,d,2,Math.min(m*.32,m/2-.001)):new THREE.BoxGeometry(w,h,d); }, Cy=(a,b,h,s=12)=>new THREE.CylinderGeometry(a,b,h,s), Co=(r,h,s=10)=>new THREE.ConeGeometry(r,h,s);
 const SKIN='#f2c29a';
 function firey(ps,o){ const coat=o.coat||'#e0b33a', hel=o.hel||'#ffd23f'; ps.push(part(Bx(.42,.42,.3),coat,0,.48,0), part(Bx(.44,.06,.32),'#e8ff6a',0,.44,0), part(Bx(.44,.06,.32),'#e8ff6a',0,.6,0));
   ps.push(part(Sp(.27),o.skin||SKIN,0,.92,0), part(Sp(.3),hel,0,1.02,-.02,{s:[1,.72,1.08]}), part(Cy(.36,.38,.04,16),hel,0,.96,-.04), part(Bx(.12,.08,.04),'#ffffff',0,1.08,.27));
@@ -73,19 +74,19 @@ export class BattleView {
     s.add(new THREE.HemisphereLight('#f3fbff','#4f7a2a',1.3)); const sun=new THREE.DirectionalLight('#fff1d6',2.4); sun.position.set(14,30,20); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); const c=sun.shadow.camera; c.left=-34; c.right=34; c.top=34; c.bottom=-34; c.far=110; sun.shadow.bias=-.0006; sun.shadow.normalBias=.03; s.add(sun,sun.target); this.sun=sun;
     // grass: two-tone tiles, dirt pads under buildings, worn paths
     const cv=document.createElement('canvas'); cv.width=cv.height=1024; const g=cv.getContext('2d'); const px=1024/GRID;
-    for(let j=0;j<GRID;j++) for(let i=0;i<GRID;i++){ g.fillStyle=(i+j)%2?'#7fcc4f':'#76c247'; g.fillRect(i*px,j*px,px+1,px+1); }
-    const R=mulberry(3); for(let k=0;k<2200;k++){ g.fillStyle=R()<.5?'rgba(255,255,255,.07)':'rgba(30,70,10,.09)'; g.fillRect(R()*1024,R()*1024,2+R()*3,6+R()*8); }
-    for(const o of this.B.b){ if(o.trap) continue; g.fillStyle=o.wall?'rgba(120,90,60,.35)':'#c9a978'; for(const [i,j] of o.cells){ g.beginPath(); g.roundRect(i*px+(o.wall?6:-4),j*px+(o.wall?6:-4),px-(o.wall?12:-8),px-(o.wall?12:-8),10); g.fill(); } }
+    for(let j=0;j<GRID;j++) for(let i=0;i<GRID;i++){ g.fillStyle=(i+j)%2?'#86e05a':'#7dd852'; g.fillRect(i*px,j*px,px+1,px+1); }
+    const R=mulberry(3); g.lineCap='round'; for(let k=0;k<700;k++){ const x0=R()*1024,y0=R()*1024; g.lineWidth=2.6; g.strokeStyle='#4fae38'; g.beginPath(); for(const d of [-5,0,5]){ g.moveTo(x0+d*.6,y0+4); g.quadraticCurveTo(x0+d*.9,y0-2,x0+d*1.5,y0-8+Math.abs(d)*.6); } g.stroke(); g.lineWidth=1.4; g.strokeStyle='#b8f58c'; g.beginPath(); g.moveTo(x0,y0+3); g.quadraticCurveTo(x0,y0-2,x0+.7,y0-6); g.stroke(); }
+    for(const o of this.B.b){ if(o.trap) continue; g.fillStyle=o.wall?'rgba(150,110,60,.3)':'#e8c88a'; for(const [i,j] of o.cells){ g.beginPath(); g.roundRect(i*px+(o.wall?6:-4),j*px+(o.wall?6:-4),px-(o.wall?12:-8),px-(o.wall?12:-8),10); g.fill(); } }
     g.strokeStyle='rgba(0,0,0,.18)'; g.lineWidth=10; g.strokeRect(5,5,1014,1014);
     const tex=new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=4;
     const ground=new THREE.Mesh(new THREE.PlaneGeometry(GRID*CELL,GRID*CELL),new THREE.MeshToonMaterial({map:tex,gradientMap:ramp()})); ground.rotation.x=-Math.PI/2; ground.position.y=GY; ground.receiveShadow=true; s.add(ground);
-    const outer=new THREE.Mesh(new THREE.PlaneGeometry(260,260),new THREE.MeshToonMaterial({color:'#4f9a34',gradientMap:ramp()})); outer.rotation.x=-Math.PI/2; outer.position.y=GY-.02; s.add(outer);
+    const outer=new THREE.Mesh(new THREE.PlaneGeometry(260,260),new THREE.MeshToonMaterial({color:'#5cc443',gradientMap:ramp()})); outer.rotation.x=-Math.PI/2; outer.position.y=GY-.02; s.add(outer);
     // ring of instanced trees and rocks around the map
-    const n=150, tg=new THREE.IcosahedronGeometry(1,0); tg.translate(0,1.6,0); const tr=new THREE.CylinderGeometry(.18,.25,1.2,6); tr.translate(0,.6,0);
+    const n=150, tg=new THREE.IcosahedronGeometry(1,1); tg.translate(0,1.6,0); const tr=new THREE.CylinderGeometry(.18,.25,1.2,6); tr.translate(0,.6,0);
     const can=new THREE.InstancedMesh(tg,new THREE.MeshToonMaterial({gradientMap:ramp()}),n), trk=new THREE.InstancedMesh(tr,M('#7a4b2a'),n); can.castShadow=true;
     for(let k=0;k<n;k++){ const a=R()*Math.PI*2, side=Math.floor(R()*4), t=(R()-.5)*(GRID*CELL+14), off=HALF+2+R()*9; const x=side===0?t:side===1?t:side===2?off:-off, z=side===0?off:side===1?-off:t; const sc=.8+R()*.7;
-      MX.compose(V.set(x,GY,z),Q.setFromAxisAngle(UP,a),new THREE.Vector3(sc,sc*(.9+R()*.4),sc)); can.setMatrixAt(k,MX); trk.setMatrixAt(k,MX); can.setColorAt(k,new THREE.Color(['#2e8b3e','#3f9d3a','#4caf50','#5b8a3c'][k%4])); }
-    s.add(can,trk); return s; }
+      MX.compose(V.set(x,GY,z),Q.setFromAxisAngle(UP,a),new THREE.Vector3(sc,sc*(.9+R()*.4),sc)); can.setMatrixAt(k,MX); trk.setMatrixAt(k,MX); can.setColorAt(k,new THREE.Color(['#43c443','#5fd35a','#38b04a','#8cc63f'][k%4])); }
+    const ol=new THREE.InstancedMesh(tg,OUTLINE,n); ol.instanceMatrix=can.instanceMatrix; s.add(can,trk,ol); return s; }
   rubbleGeo(){ const ps=[]; const R=mulberry(11); for(let k=0;k<9;k++){ const b=new THREE.DodecahedronGeometry(.18+R()*.22,0); ps.push(part(b,['#8d6e63','#a1887f','#6d4c41','#9e9e9e','#bdbdbd'][k%5],(R()-.5)*1.4,.08+R()*.15,(R()-.5)*1.4)); }
     ps.push(part(new THREE.BoxGeometry(.9,.06,.12),'#5d4037',.1,.1,.2,{ry:.6}), part(new THREE.BoxGeometry(.7,.06,.12),'#5d4037',-.2,.14,-.1,{ry:-.4})); return mergeGeometries(ps,false); }
   makeRed(){ const cells=[]; for(let j=0;j<GRID;j++) for(let i=0;i<GRID;i++) if(War.forbidden(this.B,i,j)&&!(this.B.grid[j*GRID+i]>=0)) cells.push([i,j]);

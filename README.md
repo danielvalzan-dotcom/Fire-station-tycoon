@@ -54,3 +54,12 @@ The shop and the "ad" are DEMO ONLY. Nothing is sold, no ad network is loaded, a
 - Defence: fire waves and arsonists raid your base. Watch the log and replay, and get a shield after a loss.
 - The v3 call-outs and v4 disasters and repairs are still in. v4 saves migrate automatically (the v4 build is kept in v4/).
 - Fictional game, original art and sound. Not affiliated with any fire service.
+
+## v5.1: cartoon restyle
+- Every structure is chunkier and more playful: squat bodies, flared oversized roofs, a slight lean and twist on each building, rounded and bevelled boxes everywhere, and thicker dark outlines.
+- Colours are brighter flat paint with 3-step toon shading. Realistic textures are gone; only painted ones remain (hazard stripes, signs).
+- A big original hose-nozzle emblem sits on the Engine Bay and the Station HQ.
+- Upgrade levels are easy to read: a chunky trim, then a waving flag at level 3, gold-tipped corner spikes at level 5 and a gold dome at level 7. Walls get spikes from level 5.
+- Idle squash-and-stretch on buildings, a wobble on collect, and a pop-in when a building is placed.
+- Brighter grass with painted tufts, rounded road tiles, round blobby trees.
+- Gameplay and saves are unchanged. The v5 build is kept in v5/.
