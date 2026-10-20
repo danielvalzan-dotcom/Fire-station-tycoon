@@ -49,7 +49,7 @@ svg{display:inline-block;vertical-align:middle}
 .resbar svg{position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:36px;height:36px;filter:drop-shadow(0 2px 0 rgba(0,0,0,.4))}
 .resbar.badges{padding-right:36px}
 .plus{position:absolute;right:-2px;top:-2px;width:32px;height:32px;border-radius:10px;border:2px solid #1f5c12;background:linear-gradient(#9dff6b,#3fb51e);font-family:var(--f);font-size:22px;color:#fff;text-shadow:0 2px 0 #1f5c12;line-height:1;box-shadow:inset 0 2px 0 rgba(255,255,255,.6)}
-#hudMid{position:absolute;left:8px;right:8px;top:calc(var(--st) + 94px);display:flex;gap:6px;align-items:center;z-index:5;pointer-events:none;flex-wrap:wrap}
+#hudMid{position:absolute;left:8px;right:132px;top:calc(var(--st) + 94px);display:flex;gap:6px;align-items:center;z-index:5;pointer-events:none;flex-wrap:wrap}
 .pill{font-family:var(--f);font-size:14px;color:#fff;background:rgba(15,20,30,.6);border-radius:12px;padding:4px 10px;text-shadow:0 1px 0 #000;display:flex;align-items:center;gap:4px;pointer-events:auto}
 .pill small{font-size:11px;opacity:.85;margin-left:3px}
 #rush{position:absolute;left:50%;top:calc(var(--st) + 126px);transform:translateX(-50%);z-index:6;font-family:var(--f);font-size:15px;color:#7a1010;background:linear-gradient(#ffe36b,#ffb300);border:3px solid #7a1010;border-radius:16px;padding:6px 14px;white-space:nowrap;box-shadow:0 4px 0 rgba(0,0,0,.3);animation:pulse .6s infinite alternate}
@@ -262,6 +262,53 @@ body.placing #hudBot,body.placing #quest,body.placing .side,body.placing #disBan
 .fly{position:fixed;z-index:60;font-size:22px;pointer-events:none;transition:transform .8s cubic-bezier(.5,-0.3,.7,1),opacity .8s}
 .row3{display:flex;gap:6px;margin-top:8px}.row3 .gbtn{flex:1}.csite{font-size:11px;font-weight:900;color:#c62828}
 .blabel.tl .bubble{font-size:14px;padding:2px 8px}
+
+/* ---------- v5: raids, army, results ---------- */
+.resbar .capf{position:absolute;left:2px;top:2px;bottom:2px;border-radius:13px;background:linear-gradient(rgba(255,214,64,.45),rgba(255,170,0,.25));width:0;pointer-events:none}
+.resbar.water .capf{background:linear-gradient(rgba(90,200,255,.5),rgba(30,130,230,.3))}.resbar.water{padding-left:30px}.resbar span{position:relative}
+.resbar .ric{position:absolute;left:-6px;top:50%;transform:translateY(-50%);font-size:26px;filter:drop-shadow(0 2px 0 rgba(0,0,0,.4))}
+.resbar.full{border-color:#ffcf33}.shieldp{background:linear-gradient(#5ab0ff,#1f62c9)!important}
+.o-atk{background:linear-gradient(#ff9a3c,#e2401c 55%,#a8200d)!important;border-color:#3a1205!important}.big.atk .orb{width:68px;height:68px;font-size:36px;border-radius:50%;animation:atkp 2.4s infinite}.big .lab{position:relative;z-index:1}
+@keyframes atkp{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+.big.atk .lab{font-size:15px;color:#ffe066}
+body.raiding #hudTop,body.raiding #hudMid,body.raiding #hudBot,body.raiding #quest,body.raiding .side,body.raiding #disBanner,body.raiding #rush,body.raiding #labels,body.raiding #placebar{display:none!important}
+#battleFx{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:hidden}
+.bfl{position:absolute;left:0;top:0;font-family:var(--f);font-size:15px;color:#fff;text-shadow:0 2px 0 #000,0 0 3px #000;white-space:nowrap;will-change:transform}
+.bfl.dmg{color:#fff6c9;font-size:14px}.bfl.loot{color:#ffe066;font-size:14px}.bfl.big{font-size:20px;color:#ffeb3b}
+.hpb{position:absolute;left:0;top:0;width:38px;height:7px;border-radius:4px;background:#2b1a0e;border:1.5px solid #000}.hpb i{display:block;height:100%;border-radius:3px;background:linear-gradient(#b4ff7a,#3fb51e)}
+.hpb.u,.hpb.h{width:26px;height:6px}.hpb.u i,.hpb.h i{background:linear-gradient(#7fd8ff,#1e88e5)}.hpb.h{width:40px;border-color:#ffcf33}.hpb.e i{background:linear-gradient(#ffb36b,#e64a19)}.hpb.w{width:24px;height:5px}
+#raidHud{position:absolute;inset:0;pointer-events:none;z-index:7;display:none}body.raiding #raidHud{display:block}
+#raidHud .rtop{position:absolute;top:calc(var(--st,0px) + 10px);left:10px;right:10px;display:flex;justify-content:space-between;align-items:flex-start}
+.rcard{background:rgba(15,20,30,.66);border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:6px 10px;color:#fff;font-family:var(--f);text-shadow:0 2px 0 #000;pointer-events:auto}
+.rcard .rn{font-size:16px}.rcard small{display:block;font-size:12px;opacity:.9}.rloot{display:flex;flex-direction:column;gap:3px;font-size:15px}
+.rstars{display:flex;gap:2px;font-size:26px;justify-content:center}.rstars .s{filter:grayscale(1) brightness(.6)}.rstars .s.on{filter:none;animation:spop .5s}
+@keyframes spop{0%{transform:scale(2.4) rotate(-20deg)}70%{transform:scale(.9)}100%{transform:scale(1)}}
+.rtimer{text-align:center}.rtimer b{font-size:22px}.rpct{font-size:14px}
+.rbot{position:absolute;left:0;right:0;bottom:0;padding:0 8px calc(var(--sb) + 8px);pointer-events:auto}
+.rbtns{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px;gap:8px}
+.dbar{display:flex;gap:6px;overflow-x:auto;padding:4px 2px;background:rgba(15,20,30,.55);border-radius:16px;border:2px solid rgba(255,255,255,.2)}
+.dcard{flex:0 0 auto;width:62px;height:74px;border-radius:12px;border:3px solid #2b1a0e;background:linear-gradient(#fff7e0,#e9d6a8);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:28px;box-shadow:0 4px 0 rgba(0,0,0,.45)}
+.dcard.sel{border-color:#ffcf33;transform:translateY(-6px);box-shadow:0 0 0 3px #fff,0 8px 0 rgba(0,0,0,.4)}.dcard.empty{filter:grayscale(1);opacity:.5}.dcard.hero{background:linear-gradient(#ffe7a3,#f3b23b)}
+.dcard .n{position:absolute;top:-8px;right:-6px;background:#2f8dff;color:#fff;border:2px solid #fff;border-radius:10px;font-family:var(--f);font-size:13px;padding:0 5px}
+.dcard .lv{position:absolute;bottom:2px;left:4px;font-family:var(--f);font-size:11px;color:#5d4037}.dcard small{font-family:var(--f);font-size:10px;color:#3e2723;line-height:1}
+.abtn{width:64px;height:64px;border-radius:50%;border:3px solid #2b1a0e;background:radial-gradient(circle at 35% 30%,#fff59d,#ffb300 60%,#e65100);font-size:28px;box-shadow:0 5px 0 rgba(0,0,0,.45);animation:atkp 1.2s infinite;position:relative}
+.abtn small{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font-family:var(--f);font-size:11px;color:#fff;text-shadow:0 2px 0 #000;white-space:nowrap}
+.rbig{pointer-events:auto}
+#results{position:absolute;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(0,0,0,.35),rgba(0,0,0,.75))}#results.on{display:flex}
+.resc{width:86%;max-width:360px;background:linear-gradient(#fff8e6,#f1dfb5);border:4px solid #2b1a0e;border-radius:24px;padding:16px;text-align:center;box-shadow:0 10px 0 rgba(0,0,0,.4);animation:rin .4s}
+@keyframes rin{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
+.resc h2{font-family:var(--f);font-size:30px;margin:0;color:#c62828;text-shadow:0 3px 0 #ffcf33}.resc.lose h2{color:#455a64;text-shadow:none}
+.bigstars{display:flex;justify-content:center;gap:4px;margin:10px 0;font-size:56px}.bigstars span{opacity:0;transform:scale(3);filter:drop-shadow(0 4px 0 rgba(0,0,0,.35))}
+.bigstars span.on{animation:sland .45s forwards}.bigstars span.off{animation:sfade .45s forwards}.bigstars span:nth-child(2){font-size:70px;margin-top:-10px}
+@keyframes sland{0%{opacity:0;transform:scale(3) rotate(-30deg)}60%{opacity:1;transform:scale(.85)}100%{opacity:1;transform:scale(1)}}@keyframes sfade{to{opacity:.25;transform:scale(1);filter:grayscale(1)}}
+.respct{font-family:var(--f);font-size:20px;color:#3e2723}.resrow{display:flex;justify-content:center;gap:14px;margin:10px 0;font-family:var(--f);font-size:20px}.resrow .tro{color:#8a5300}
+.resused{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:6px 0 12px}.resused span{background:#fff;border:2px solid #2b1a0e;border-radius:10px;padding:2px 6px;font-family:var(--f);font-size:14px}
+.tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.tcard{position:relative;border:3px solid #2b1a0e;border-radius:14px;background:linear-gradient(#fffaf0,#f0e1bd);padding:6px 4px;text-align:center;box-shadow:0 4px 0 rgba(0,0,0,.25)}
+.tcard .ti{font-size:32px}.tcard b{display:block;font-family:var(--f);font-size:13px;line-height:1.1}.tcard small{display:block;font-size:11px;color:#5d4037}.tcard.lock{filter:grayscale(.9);opacity:.6}.tcard .tn{position:absolute;top:-8px;right:-6px;background:#2f8dff;color:#fff;border:2px solid #fff;border-radius:10px;font-family:var(--f);font-size:12px;padding:0 5px}
+.campbar{margin:6px 0 10px}.qrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.qchip{background:#fff;border:2px solid #2b1a0e;border-radius:10px;padding:2px 6px;font-size:18px;position:relative}.qchip button{border:none;background:#e53935;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;margin-left:2px}
+.lcard{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#3d2a6b,#1e1440);color:#fff;border-radius:18px;padding:12px;border:3px solid #2b1a0e;margin-bottom:10px}.lcard .lb{font-size:44px}.lcard b{font-family:var(--f);font-size:22px}.lcard small{display:block;opacity:.85}
+.dlog{display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #2b1a0e;border-radius:14px;padding:8px;margin-bottom:8px}.dlog .ds{font-size:18px;white-space:nowrap}.dlog .dinfo{flex:1;font-size:13px}.dlog .dinfo b{font-family:var(--f);font-size:15px}.dlog.new{border-color:#ff7a1a;box-shadow:0 0 0 2px #ffcf33}
+.scout{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 110px);display:flex;gap:10px;pointer-events:auto}
 </style>
 </head>
 <body>
@@ -271,20 +318,21 @@ body.placing #hudBot,body.placing #quest,body.placing .side,body.placing #disBan
   <div id="hudTop">
     <div class="player"><div class="shield" id="slvl">1</div><div class="pinfo2"><div class="pname">Snag Flats Station</div><div class="xpbar"><i id="sxp"></i></div></div></div>
     <div class="res">
-      <div class="resbar coins"><svg viewBox="0 0 32 32"><use href="#ic-coin"/></svg><span id="coins">0</span></div>
+      <div class="resbar coins"><svg viewBox="0 0 32 32"><use href="#ic-coin"/></svg><i class="capf" id="coinCapF"></i><span id="coins">0</span></div>
+      <div class="resbar water"><span class="ric">💧</span><i class="capf" id="waterCapF"></i><span id="water">0</span></div>
       <div class="resbar badges"><svg viewBox="0 0 32 32"><use href="#ic-badge"/></svg><span id="badges">0</span><button class="plus" id="badgePlus" aria-label="Get badges">+</button></div>
     </div>
   </div>
-  <div id="hudMid"><div class="pill" id="trophies"></div><div class="pill" id="builders"></div><div class="pill" id="trucks"></div><div class="pill" id="town"></div></div>
+  <div id="hudMid"><div class="pill" id="trophies"></div><div class="pill" id="builders"></div><div class="pill" id="trucks"></div><div class="pill" id="town"></div><div class="pill shieldp" id="shieldp" style="display:none"></div></div>
   <canvas id="wx"></canvas>
   <div id="rush" style="display:none"></div>
   <div id="disBanner" class="disb" style="display:none"></div>
   <div class="side"><button class="ibtn" id="btnSettings" aria-label="Settings">⚙️</button><button class="ibtn" id="btnSound" aria-label="Sound">🔊</button></div>
   <div id="quest"></div>
   <div id="hudBot">
+    <button class="big atk" id="btnAttack"><div class="orb o-atk">⚔️</div><div class="lab">Attack!</div><div class="count" id="defNew" style="display:none">!</div></button>
     <button class="big" id="btnCalls"><div class="orb o-red">🚨</div><div class="lab">Call-outs</div><div class="count" style="display:none">0</div></button>
-    <button class="big" id="btnCrew"><div class="orb o-blue">👨‍🚒</div><div class="lab">Crew</div></button>
-    <button class="big" id="btnComp"><div class="orb o-gold">🏆</div><div class="lab">Compete</div></button>
+    <button class="big" id="btnArmy"><div class="orb o-blue">⛺</div><div class="lab">Army</div><div class="count" id="armyCnt" style="display:none">0</div></button>
     <button class="big" id="btnBuild"><div class="orb o-orange">🔨</div><div class="lab">Build</div></button>
     <button class="big" id="btnShop"><div class="orb o-green">🛒</div><div class="lab">Shop</div></button>
   </div>
@@ -292,6 +340,9 @@ body.placing #hudBot,body.placing #quest,body.placing .side,body.placing #disBan
   <div id="sheet"><div class="sbody"></div></div>
   <div id="panel"><div class="pwrap"><div class="phead"><div class="ptitle"></div><button class="xbtn" data-act="closepanel" aria-label="Close">✕</button></div><div class="pbody"></div></div></div>
   <div id="placebar"></div>
+  <div id="battleFx"></div>
+  <div id="raidHud"></div>
+  <div id="results"></div>
   <div id="mg"></div>
   <div id="act"></div>
   <div id="enroute"></div>

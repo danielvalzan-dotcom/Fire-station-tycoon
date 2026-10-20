@@ -117,7 +117,7 @@ export const LEAGUES = [
   { name:'Gold',     min:400,  color:'#ffca28', reward:[300,4]  },
   { name:'Platinum', min:800,  color:'#80deea', reward:[550,6]  },
   { name:'Diamond',  min:1300, color:'#b388ff', reward:[900,8]  },
-  { name:'Champion', min:2000, color:'#ff5252', reward:[1500,12]},
+  { name:'Legend',   min:2000, color:'#ff5252', reward:[1500,12]},
 ];
 export const leagueOf = tr => { let i=0; LEAGUES.forEach((l,j)=>{ if(tr>=l.min) i=j; }); return i; };
 

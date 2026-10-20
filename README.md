@@ -45,3 +45,12 @@ The shop and the "ad" are DEMO ONLY. Nothing is sold, no ad network is loaded, a
 - Collect bubbles for coins/🧱 materials; services raise happiness and cut disaster damage; fire buildings add trucks, calls, water, hazmat and a water-bombing helicopter in hands-on fires.
 - Calls spawn at your own buildings; failed calls and disasters damage them (smoke, rubble, tape) until repaired.
 - Day/night cycle (toggle in Settings), cars and walkers on your roads. Saves migrate from v3 (v3/ keeps the old build).
+
+## v5 — Station Raids (strategy update)
+- Build a base around your Station HQ, which sets the level cap for everything. Pumps make Water and mints make Coins; vaults and tanks hold them. Badges are the premium currency.
+- Defences: hydrant cannon, sprinkler tower, foam mortar, water-bomber helipad, firebreak walls (place them in runs and upgrade per segment), alarm traps.
+- Army: train hose crews, ladder fireys, chainsaw cutters, hazmat specialists, tankers, aerial appliances and water-bombing helis in the barracks. The Research Lab levels up troops, and animal-crew heroes have abilities.
+- Drill raids on rival stations: deploy troops around the edge. Earn stars at 50%, for the HQ and at 100%, plus loot and trophies. Leagues run Bronze to Legend.
+- Defence: fire waves and arsonists raid your base. Watch the log and replay, and get a shield after a loss.
+- The v3 call-outs and v4 disasters and repairs are still in. v4 saves migrate automatically (the v4 build is kept in v4/).
+- Fictional game, original art and sound. Not affiliated with any fire service.

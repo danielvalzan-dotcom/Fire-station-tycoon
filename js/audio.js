@@ -32,6 +32,16 @@ export const Snd = { ctx:null, sfxBus:null, musicBus:null, noiseBuf:null, sprayG
     const v=o.v??.05; g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(v,t0+(o.attack??.005)); g.gain.exponentialRampToValueAtTime(0.0001,t0+d);
     src.connect(f).connect(g).connect(o.bus||this.sfxBus); src.start(t0,Math.random()); src.stop(t0+d+.05); },
   bell(f,delay=0,v=.05){ this.tone(f,1.1,{v,delay}); this.tone(f*2.76,.5,{v:v*.35,delay}); this.tone(f*5.4,.25,{v:v*.15,delay}); },
+  // ---- v5: raids ----
+  train(){ this.tone(880,.06,{type:'square',v:.03,lp:3000}); this.tone(1320,.09,{type:'square',v:.03,delay:.06,lp:3000}); this.noise(.05,{freq:5000,v:.02,delay:.02}); },
+  deploy(){ if(this.limit('dep',60)) return; this.noise(.14,{freq:1800,f2:500,v:.05}); this.tone(420,.1,{f2:880,type:'triangle',v:.05}); },
+  hose(){ if(this.limit('hose',160)) return; this.noise(.22,{freq:2600,q:.7,v:.022,attack:.02}); },
+  boom(){ if(this.limit('boom',90)) return; this.noise(.6,{ft:'lowpass',freq:1000,f2:110,v:.14,q:.5}); this.tone(120,.45,{f2:38,type:'sawtooth',v:.07,lp:420}); this.noise(.3,{freq:3500,v:.03,delay:.05}); },
+  wall(){ if(this.limit('wall',80)) return; this.noise(.2,{ft:'lowpass',freq:1500,f2:280,v:.08}); this.tone(200,.09,{type:'square',v:.03,lp:900}); },
+  star(){ [1046,1318,1568,2093].forEach((f,i)=>this.tone(f,.3,{type:'triangle',v:.06,delay:i*.06})); },
+  ability(){ this.tone(260,.5,{f2:1300,type:'sawtooth',v:.05,lp:2600,attack:.02}); this.noise(.35,{freq:3200,v:.04,delay:.1}); },
+  victory(){ const n=[523,659,784,1046,784,1046,1318]; n.forEach((f,i)=>this.tone(f,i===n.length-1?.9:.18,{type:'square',v:.045,delay:i*.14,lp:3200})); [523,659,784].forEach(f=>this.tone(f,1.2,{type:'triangle',v:.035,delay:1.0})); },
+  defeat(){ [392,370,349,294].forEach((f,i)=>this.tone(f,i===3?1.1:.42,{type:'sawtooth',v:.045,delay:i*.42,lp:900,f2:i===3?260:undefined,glide:1})); },
   // ---- kept from v0.2 ----
   tap(){ this.tone(1100,.04,{v:.035,f2:700,type:'triangle'}); },
   siren(){ if(this.limit('siren',450)) return;

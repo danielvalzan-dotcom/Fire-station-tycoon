@@ -1,10 +1,12 @@
 // Firey Station Tycoon v4: game state and rules. No DOM in here, so it can be unit-tested or moved server-side later.
 import * as D from './data.js';
 import * as T from './town.js';
+import * as A from './army.js';
+export { A };
 import { TB, ZONE_CATS as TD_ZONE } from './towndata.js';
 const TDB=t=>TB[t];
 export { T };
-const KEY='fst_v4_save', V3_KEY='fst_v3_save', V2_KEY='fst_v2_save', OLD_KEY='fireyStationTycoon_v1';
+const KEY='fst_v5_save', V4_KEY='fst_v4_save', V3_KEY='fst_v3_save', V2_KEY='fst_v2_save', OLD_KEY='fireyStationTycoon_v1';
 export let S=null;
 const now=()=>Date.now();
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -12,7 +14,7 @@ const pick=a=>a[Math.floor(Math.random()*a.length)];
 let uid=1; const newId=p=>p+'_'+Date.now().toString(36)+'_'+(uid++)+Math.random().toString(36).slice(2,5);
 
 export function newState(){
-  const s={ v:4, created:now(), lastSeen:now(), playerId:newId('p'), stationName:'Snag Flats Station',
+  const s={ v:5, created:now(), lastSeen:now(), playerId:newId('p'), stationName:'Snag Flats Station',
     coins:400, badges:30, level:1, xp:0,
     buildings:{ engine:{l:1}, tower:{l:1}, gym:{l:0}, hazmat:{l:0}, rescue:{l:0}, quarters:{l:1}, comms:{l:1} },
     builders:1, crew:[], calls:[], nextCallAt:now()+4000, callSeq:0,
@@ -25,14 +27,17 @@ export function newState(){
 
 export function load(){
   let raw=null; try{ raw=localStorage.getItem(KEY); }catch(e){}
-  if(raw){ try{ const d=JSON.parse(raw); if(d&&d.v===4){ S=d; repair(); return {fresh:false}; } }catch(e){ console.warn('v4 save unreadable, starting fresh', e); } }
+  if(raw){ try{ const d=JSON.parse(raw); if(d&&d.v===5){ S=d; repair(); return {fresh:false}; } }catch(e){ console.warn('v4 save unreadable, starting fresh', e); } }
+  // v4 -> v5: keep everything, add the army and a starter barracks, pump, cannon and wall run
+  try{ const v4=JSON.parse(localStorage.getItem(V4_KEY)||'null');
+    if(v4&&v4.v===4&&Array.isArray(v4.crew)){ S=v4; S.v=5; S.migratedFrom='v4'; repair(); T.starterV5&&T.starterV5(); save(); return {fresh:true, migrated:{fromV4:true, crew:S.crew.length}}; } }catch(e){ console.warn('v4 save unreadable', e); }
   // v3 -> v4: keep everything, add a starter town around the station
   try{ const v3=JSON.parse(localStorage.getItem(V3_KEY)||'null');
-    if(v3&&v3.v===3&&Array.isArray(v3.crew)){ S=v3; S.v=4; S.migratedFrom='v3'; repair(); save(); return {fresh:true, migrated:{fromV3:true, crew:S.crew.length}}; } }catch(e){ console.warn('v3 save unreadable', e); }
+    if(v3&&v3.v===3&&Array.isArray(v3.crew)){ S=v3; S.v=5; S.migratedFrom='v3'; repair(); save(); return {fresh:true, migrated:{fromV3:true, crew:S.crew.length}}; } }catch(e){ console.warn('v3 save unreadable', e); }
   // v2 -> v3: keep everything, give each crew member an animal species
   try{ const v2=JSON.parse(localStorage.getItem(V2_KEY)||'null');
-    if(v2&&v2.v===2&&Array.isArray(v2.crew)){ S=v2; S.v=4; S.migratedFrom='v2'; repair(); save(); return {fresh:true, migrated:{fromV2:true, crew:S.crew.length}}; } }catch(e){ console.warn('v2 save unreadable', e); }
-  newState(); T.ensureTown(); let migrated=null;
+    if(v2&&v2.v===2&&Array.isArray(v2.crew)){ S=v2; S.v=5; S.migratedFrom='v2'; repair(); save(); return {fresh:true, migrated:{fromV2:true, crew:S.crew.length}}; } }catch(e){ console.warn('v2 save unreadable', e); }
+  newState(); T.ensureTown(); A.ensureArmy(); T.starterV5&&T.starterV5(); let migrated=null;
   try{ const old=JSON.parse(localStorage.getItem(OLD_KEY)||'null');
     if(old&&typeof old==='object'){ const earned=+old.stats?.earned||+old.coins||0;
       migrated={ coins:Math.min(6000,Math.round(250+Math.sqrt(Math.max(0,earned))*25)), badges:Math.min(150,25+(old.stations||1)*10+(old.stats?.rushWins||0)*5), fromLevel:old.level||1 };
@@ -46,7 +51,7 @@ function repair(){ const def=defaults();
   S.town=Object.assign({happy:75,rep:0,damaged:{}},S.town||{}); S.dis=Object.assign({next:now()+6*60e3,active:null,count:0,seen:{}},S.dis||{});
   // an action scene that was open when the app closed resolves on the timer instead
   S.calls.forEach(c=>{ if(c.state==='out'&&c.action){ c.action=false; c.end=now()+5000; } });
-  T.ensureTown();
+  T.ensureTown(); A.ensureArmy(); T.starterV5();
   // anything that was mid-flight when the app closed is resolved by tick()
 }
 function defaults(){ const keep=S; const d=newState(); S=keep; delete d.tw; return d; }
@@ -305,7 +310,7 @@ function disasterTick(events){ const t=now(), a=S.dis.active;
   if(a.phase!=='rebuild') S.nextCallAt=Math.max(S.nextCallAt,t+20000);   // the pager goes quiet during a disaster
 }
 /* ---------- main tick: call every frame or so; returns events for the UI ---------- */
-export function tick(){ const events=[]; sizzleTick(); T.townTick(events);
+export function tick(){ const events=[]; sizzleTick(); T.townTick(events); A.armyTick(events);
   const built=finishBuildings(); built.forEach(id=>events.push({built:id}));
   resolveCalls().forEach(r=>events.push({result:r}));
   if(now()>=S.nextCallAt){ const first=S.firstCallsDone===0&&!S.calls.some(c=>c.type==='bin');

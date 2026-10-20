@@ -1,7 +1,7 @@
 // Firey Station Tycoon v2: 3D isometric base (Three.js, vendored locally).
 // All models are built from primitives in code. Original art, no real logos or insignia.
 import * as THREE from './vendor/three.bundle.min.js';
-import { RoundedBoxGeometry } from './vendor/three.bundle.min.js';
+import { RoundedBoxGeometry, mergeGeometries } from './vendor/three.bundle.min.js';
 
 const SQ = Math.SQRT1_2;
 // layout in screen-aligned coords: u = right, v = towards the bottom of the screen
@@ -17,10 +17,33 @@ export const LAYOUT = {
 };
 
 const matCache = new Map();
+// v5 "chunky toon" look: 3-step gradient ramp, slightly boosted saturation, rim light baked into emissive by the shader hook below.
+let RAMP=null; function ramp(){ if(RAMP) return RAMP; const d=new Uint8Array([70,70,70,255, 150,150,150,255, 215,215,215,255, 255,255,255,255]);
+  RAMP=new THREE.DataTexture(d,4,1,THREE.RGBAFormat); RAMP.magFilter=RAMP.minFilter=THREE.NearestFilter; RAMP.generateMipmaps=false; RAMP.needsUpdate=true; return RAMP; }
+const RIM={ value:0.55 };
+function toonHook(m){ m.onBeforeCompile=sh=>{ sh.uniforms.rimK=RIM;
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform float rimK;')
+      .replace('#include <opaque_fragment>','{ float rim=1.0-clamp(dot(normalize(normal),normalize(vViewPosition)),0.0,1.0); outgoingLight+=diffuseColor.rgb*pow(rim,3.0)*rimK; }\n#include <opaque_fragment>'); };
+  m.customProgramCacheKey=()=>'toonrim'; return m; }
+function sat(color){ const c=new THREE.Color(color); const h={}; c.getHSL(h); if(h.s>.08) c.setHSL(h.h,Math.min(1,h.s*1.18+.04),h.l); return c; }
 function M(color, o={}){ const k=color+JSON.stringify(o); if(matCache.has(k)) return matCache.get(k);
-  const m = new THREE.MeshPhongMaterial({ color, shininess:o.shine??38, specular:o.spec??0x2a2a2a, emissive:o.em??0x000000,
-    emissiveIntensity:o.ei??1, transparent:!!o.op, opacity:o.op??1, flatShading:!!o.flat, map:o.map||null });
-  matCache.set(k,m); return m; }
+  const m = toonHook(new THREE.MeshToonMaterial({ color:sat(color), gradientMap:ramp(), emissive:o.em??0x000000,
+    emissiveIntensity:o.ei??1, transparent:!!o.op, opacity:o.op??1, map:o.map||null }));
+  if(o.shine>70){ m.emissive=new THREE.Color(o.em??0x000000); } matCache.set(k,m); return m; }
+/* ---------- merge a group into one mesh per material + one outline hull (big draw-call saver) ---------- */
+const OUTLINE=(()=>{ const m=new THREE.MeshBasicMaterial({color:'#2b1d14',side:THREE.BackSide});
+  m.onBeforeCompile=sh=>{ sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>','vec3 transformed=position+normal*0.045;'); }; m.customProgramCacheKey=()=>'outl'; return m; })();
+function bake(g, opt={}){ g.updateMatrixWorld(true); const inv=new THREE.Matrix4().copy(g.matrixWorld).invert(); const buckets=new Map(); const kill=[]; const outl=[];
+  g.traverse(o=>{ if(!o.isMesh||o.userData.keep||o.isInstancedMesh) return; if(o.material&&o.material.visible===false) return; let p=o.parent, skip=false; while(p&&p!==g){ if(p.userData.keep) skip=true; p=p.parent; } if(skip) return; if(Array.isArray(o.material)) return;
+    let geo=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone(); for(const k of Object.keys(geo.attributes)) if(!['position','normal','uv'].includes(k)) geo.deleteAttribute(k);
+    if(!geo.attributes.uv) geo.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count*2),2));
+    if(!geo.attributes.normal) geo.computeVertexNormals();
+    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv,o.matrixWorld)); const k=o.material.uuid; if(!buckets.has(k)) buckets.set(k,{m:o.material,gs:[],shadow:o.castShadow}); buckets.get(k).gs.push(geo);
+    if(opt.outline!==false&&!o.material.transparent&&!o.userData.noOutline){ const big=new THREE.Box3().setFromBufferAttribute(geo.attributes.position); const sz=big.getSize(new THREE.Vector3()); if(Math.max(sz.x,sz.y,sz.z)>.18&&sz.y>.03) outl.push(geo); }
+    kill.push(o); });
+  kill.forEach(o=>o.parent.remove(o));
+  if(outl.length){ const og=mergeGeometries(outl.map(x=>{ const c=new THREE.BufferGeometry(); c.setAttribute('position',x.attributes.position); c.setAttribute('normal',x.attributes.normal); return c; }),false); if(og){ const om=new THREE.Mesh(og,OUTLINE); om.userData.outline=true; g.add(om); } }
+  for(const {m,gs,shadow} of buckets.values()){ const merged=mergeGeometries(gs,false); gs.forEach(x=>x.dispose()); if(!merged) continue; const mesh=new THREE.Mesh(merged,m); mesh.castShadow=shadow!==false&&!m.transparent; mesh.receiveShadow=true; g.add(mesh); } }
 function rbox(w,h,d,r,mat){ const g=new RoundedBoxGeometry(w,h,d,3,Math.min(r,w/2-.001,h/2-.001,d/2-.001)); const m=new THREE.Mesh(g,mat); m.castShadow=true; m.receiveShadow=true; return m; }
 function box(w,h,d,mat){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.castShadow=true; m.receiveShadow=true; return m; }
 function cyl(rt,rb,h,mat,seg=16){ const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),mat); m.castShadow=true; m.receiveShadow=true; return m; }
@@ -55,7 +78,7 @@ export class BaseScene {
     r.outputColorSpace=THREE.SRGBColorSpace; r.toneMapping=THREE.ACESFilmicToneMapping; r.toneMappingExposure=1.08;
     container.appendChild(r.domElement); r.domElement.style.touchAction='none';
     const s=this.scene=new THREE.Scene(); s.background=new THREE.Color('#8fd3ff'); s.fog=new THREE.Fog('#8fd3ff', 60, 110);
-    this.cam=new THREE.OrthographicCamera(-10,10,10,-10,0.1,200); this.camDist=50; this.zoom=1; this.pan=new THREE.Vector2(0,0); this.bounds={u0:-3.5,u1:3.5,v0:-7,v1:7}; this.zMin=.45; this.zMax=2.4; this.extraWalkers=[];
+    this.cam=new THREE.OrthographicCamera(-10,10,10,-10,-200,420); this.camDist=50; this.zoom=1; this.pan=new THREE.Vector2(0,0); this.bounds={u0:-3.5,u1:3.5,v0:-7,v1:7}; this.zMin=.45; this.zMax=2.4; this.extraWalkers=[];
     // lights
     this.hemi=new THREE.HemisphereLight('#e8f6ff','#5d7a3a',1.25); s.add(this.hemi);
     const sun=this.sun=new THREE.DirectionalLight('#fff4dc',2.3); sun.position.set(9,24,15); sun.castShadow=true;
@@ -63,7 +86,7 @@ export class BaseScene {
     s.add(sun); s.add(sun.target);
     this.buildings={}; this.anim=[]; this.trucksOut=[]; this.walkers=[]; this.t=0; this.selected=null; this.levels={};
     this.raycaster=new THREE.Raycaster(); this.ptr=new THREE.Vector2();
-    this.buildWorld(); this.bindInput(); this.resize();
+    this.buildWorld(); this.mergeStatics(); this.bindInput(); this.resize();
     window.addEventListener('resize',()=>this.resize()); if(window.ResizeObserver) new ResizeObserver(()=>this.resize()).observe(container);
   }
   resize(){ const w=this.container.clientWidth||1, h=this.container.clientHeight||1; this.w=w; this.h=h; this.renderer.setSize(w,h,false);
@@ -119,6 +142,9 @@ export class BaseScene {
     // smoke puffs pool
     this.puffs=[]; for(let i=0;i<70;i++){ const p=sph(.25,M('#ffffff',{op:.8,shine:0})); p.castShadow=false; p.visible=false; s.add(p); this.puffs.push({m:p,life:0}); }
   }
+  mergeStatics(){ const skip=new Set([...Object.values(this.buildings).map(b=>b.group),...this.walkers.map(w=>w.m),...this.puffs.map(p=>p.m),this.ring,this.flagMesh]);
+    const st=new THREE.Group(); st.name='statics'; const mv=this.scene.children.filter(o=>(o.isMesh||o.type==='Group')&&!skip.has(o)&&!o.isLight);
+    mv.forEach(o=>{ this.scene.remove(o); st.add(o); }); this.scene.add(st); bake(st); this.statics=st; }
   tree(x,z,sc,rnd){ const t=new THREE.Group(); const trunk=cyl(.12*sc,.16*sc,.8*sc,M('#7a4b2a'),8); at(trunk,0,.4*sc,0); t.add(trunk);
     const greens=['#3f9d3a','#4caf50','#2e8b3e','#5cb85c']; const col=greens[Math.floor(rnd()*4)];
     if(rnd()<.5){ const c1=sph(.75*sc,M(col,{shine:12}),12); at(c1,0,1.15*sc,0); const c2=sph(.5*sc,M(col,{shine:12}),10); at(c2,.35*sc,1.55*sc,.2*sc); t.add(c1,c2); }
@@ -160,7 +186,9 @@ export class BaseScene {
     const lv=level|0; const trim = lv>=7?'#ffcf33':lv>=4?'#ffe8a3':'#ffffff';
     const sc=0.9+Math.min(lv,10)*0.012;
     if(lv<=0){ this.plot(inner,L,state.locked); }
-    else this['b_'+id](inner,L,lv,trim);
+    else { const before=new Map(Object.entries(this)); this['b_'+id](inner,L,lv,trim);
+      for(const [k,v] of Object.entries(this)){ if(before.get(k)===v) continue; const mark=o=>{ if(o&&o.isObject3D){ o.userData.keep=true; } }; if(Array.isArray(v)) v.forEach(mark); else mark(v); }
+      bake(inner); }
     inner.scale.setScalar(lv>0?sc:1);
     // invisible hit box
     const hit=new THREE.Mesh(new THREE.BoxGeometry(L.w+.4,3.2,L.d+.4),new THREE.MeshBasicMaterial({visible:false})); hit.position.y=1.5; hit.userData.bid=id; grp.add(hit);
@@ -346,6 +374,7 @@ export class BaseScene {
       const on=Math.floor(t*8)%2; tr.m.userData.lights[0].material.emissiveIntensity=on?1.4:.1; tr.m.userData.lights[1].material.emissiveIntensity=on?.1:1.4;
       if(tr.t>=1){ this.scene.remove(tr.m); tr.done=true; } }
     this.trucksOut=this.trucksOut.filter(t=>!t.done);
+    if(this.battle){ this.battle.update(dt,t); this.renderer.render(this.battle.scene,this.cam); return; }
     this.town?.update(dt,t);
     this.renderer.render(this.scene,this.cam);
   }
@@ -353,7 +382,7 @@ export class BaseScene {
     const el=this.renderer.domElement, pts=new Map(); let start=null, pinch0=null;
     let hooked=false;
     el.addEventListener('pointerdown',e=>{ e.preventDefault(); el.setPointerCapture?.(e.pointerId);
-      if(pts.size===0&&this.hook?.down?.(e.clientX,e.clientY)){ hooked=true; pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); return; }
+      if(pts.size===0&&!this.battle&&this.hook?.down?.(e.clientX,e.clientY)){ hooked=true; pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); return; }
       pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(pts.size===1){ start={x:e.clientX,y:e.clientY,pan:this.pan.clone(),moved:false,t:performance.now()}; this.panTarget=null; this.vel=new THREE.Vector2(); this.dragging=true; }
       if(pts.size===2){ const [a,b]=[...pts.values()]; pinch0={d:Math.hypot(a.x-b.x,a.y-b.y),z:this.zoom}; if(start) start.moved=true; } },{passive:false});
@@ -370,9 +399,9 @@ export class BaseScene {
     el.addEventListener('wheel',e=>{ e.preventDefault(); this.zoom=Math.max(this.zMin,Math.min(this.zMax,this.zoom*(e.deltaY>0?.92:1.08))); this.updateCam(); },{passive:false});
   }
   tap(cx,cy){ const r=this.renderer.domElement.getBoundingClientRect(); this.ptr.set((cx-r.left)/r.width*2-1, -((cy-r.top)/r.height)*2+1);
-    this.raycaster.setFromCamera(this.ptr,this.cam); if(this.town&&this.town.tap(this.raycaster,cx,cy)) return; const hits=this.raycaster.intersectObjects(Object.values(this.buildings).map(b=>b.hit),false);
+    this.raycaster.setFromCamera(this.ptr,this.cam); if(this.battle){ this.battle.tap(this.raycaster,cx,cy); return; } if(this.town&&this.town.tap(this.raycaster,cx,cy)) return; const hits=this.raycaster.intersectObjects(Object.values(this.buildings).map(b=>b.hit),false);
     if(hits.length){ this.onSelect(hits[0].object.userData.bid); } else this.onTapEmpty(); }
 }
 function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 
-export { THREE, M, rbox, box, cyl, sph, at, textTex, stripeTex, hazardTex, windowRow, uv, mulberry };
+export { THREE, M, bake, OUTLINE, RIM, ramp, rbox, box, cyl, sph, at, textTex, stripeTex, hazardTex, windowRow, uv, mulberry };

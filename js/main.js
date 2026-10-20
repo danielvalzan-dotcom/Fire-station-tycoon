@@ -1,4 +1,4 @@
-// Firey Station Tycoon v4: UI controller. Fictional game. Not affiliated with any fire service.
+// Firey Station Tycoon v5: UI controller. Fictional game. Not affiliated with any fire service.
 import * as D from './data.js';
 import * as G from './state.js';
 import { S } from './state.js';
@@ -11,7 +11,11 @@ import { runMinigame } from './minigame.js';
 import { Backend } from './backend.js';
 import { TownLayer } from './town3d.js';
 import * as TD from './towndata.js';
+import { BattleView } from './battle3d.js';
+import * as War from './war.js';
+import * as WD from './wardata.js';
 const T=G.T;
+const A=G.A; let armyTab='train'; let raid=null; let trainedN=0, trainedT=0;
 const $=s=>document.querySelector(s), fmt=D.fmt, fmtTime=D.fmtTime;
 export const ICON = {
   coin:`<svg class="i-coin" viewBox="0 0 32 32"><use href="#ic-coin"/></svg>`,
@@ -54,19 +58,19 @@ function renderTownLabels(){ const seen=new Set();
     const d=TD.TB[it.t]; let h=''; const call=S.calls.find(c=>c.at===it.id&&(c.state==='open'||c.state==='out'));
     if(call) h+=`<div class="bubble pager" data-tcall>${call.state==='out'?'🚒':'🚨'}<b>${G.callType(call).icon}</b></div>`;
     else if(it.dmg) h+=`<div class="bubble dmgb">🔨<b>Fix</b></div>`;
-    else if(T.ready(it)) h+=`<div class="bubble" data-tcol>${d.res==='mats'?'🧱':ICON.coin}<b>${fmt(Math.floor(it.store))}</b></div>`;
+    else if(T.ready(it)) h+=`<div class="bubble" data-tcol>${d.res==='mats'?'💧':ICON.coin}<b>${fmt(Math.floor(it.store))}</b></div>`;
     if(it.up) h+=`<div class="lbar"><i data-pstart="${it.up.start}" data-pend="${it.up.end}"></i><span data-end="${it.up.end}"></span></div>`;
     if(el._h!==h){ el.innerHTML=h; el._h=h; } }
   for(const [id,el] of tlabels) if(!seen.has(id)){ el.remove(); tlabels.delete(id); }
   const want=town.mode==='expand'?T.buyable():[]; const pi=T.plotInfo(); const keys=new Set(want.map(p=>p.k));
   for(const p of want){ let el=plabels.get(p.k); if(!el){ el=document.createElement('div'); el.className='blabel plot'; el.dataset.k=p.k; labelsEl.appendChild(el); plabels.set(p.k,el); el.addEventListener('click',e=>{ e.stopPropagation(); plotTap(el.dataset.k); }); }
-    const h=`<div class="ptag">🗺️ For sale<b>${ICON.coin}${fmt(pi.cost)}${pi.mats?` 🧱${pi.mats}`:''}</b></div>`; if(el._h!==h){ el.innerHTML=h; el._h=h; } }
+    const h=`<div class="ptag">🗺️ For sale<b>${ICON.coin}${fmt(pi.cost)}${pi.mats?` 💧${pi.mats}`:''}</b></div>`; if(el._h!==h){ el.innerHTML=h; el._h=h; } }
   for(const [k,el] of plabels) if(!keys.has(k)){ el.remove(); plabels.delete(k); } }
-function townCollect(id,el){ const r=T.collect(id); if(!r) return; S.stats.tcollect=(S.stats.tcollect||0)+1; Snd.collect(); flyIcon(el,r.mats?'🧱':'🪙',r.mats?'#mats':'#coins'); toast(r.mats?`🧱 +${r.mats} materials`:`+${fmt(r.coins)} coins`,'gold'); town.bounce(id); after(); }
+function townCollect(id,el){ const r=T.collect(id); if(!r) return; S.stats.tcollect=(S.stats.tcollect||0)+1; Snd.collect(); flyIcon(el,r.mats?'💧':'🪙',r.mats?'#mats':'#coins'); toast(r.mats?`💧 +${r.mats} materials`:`+${fmt(r.coins)} coins`,'gold'); town.bounce(id); after(); }
 function flyIcon(fromEl,ic,to){ const a=fromEl.getBoundingClientRect(), b=($(to)||$('#coins')).getBoundingClientRect(); for(let i=0;i<5;i++){ const f=document.createElement('div'); f.className='fly'; f.textContent=ic; f.style.left=(a.left+a.width/2)+'px'; f.style.top=(a.top)+'px'; document.body.appendChild(f);
   requestAnimationFrame(()=>{ f.style.transitionDelay=(i*60)+'ms'; f.style.transform=`translate(${b.left-a.left-a.width/2+(Math.random()*20-10)}px,${b.top-a.top}px) scale(.6)`; f.style.opacity='.2'; }); setTimeout(()=>f.remove(),1100); } }
 function plotTap(k){ if(!T.buyable().some(p=>p.k===k)) return toast('Pick a glowing plot next to your land'); const pi=T.plotInfo();
-  modal(`<h2>🗺️ Buy this land?</h2><p>A 4×4 plot of bush next to town. We'll clear it for building.</p><div class="rewards"><span>${C(pi.cost)}</span>${pi.mats?`<span>🧱 <b>${pi.mats}</b></span>`:''}</div>${pi.allowed?'':`<p class="note">Station level ${S.level} allows ${TD.plotsAllowed(S.level)} plots. Level up for more.</p>`}`,
+  modal(`<h2>🗺️ Buy this land?</h2><p>A 4×4 plot of bush next to town. We'll clear it for building.</p><div class="rewards"><span>${C(pi.cost)}</span>${pi.mats?`<span>💧 <b>${pi.mats}</b></span>`:''}</div>${pi.allowed?'':`<p class="note">Station level ${S.level} allows ${TD.plotsAllowed(S.level)} plots. Level up for more.</p>`}`,
     [{label:'Buy land',cls:'green',fn:()=>{ if(err(T.buyPlot(k))) return; Snd.buildDone(); toast('🗺️ Land cleared! More room to build','gold'); town.drawGround(S); after(); }},{label:'Not now',cls:'blue'}]); }
 /* ---------- v4: placing buildings ---------- */
 function startPlace(t,moveId){ closePanel(); closeSheet(); const it=moveId?T.byId(moveId):null; const p={t,r:it?it.r:0,moveId,lv:it?Math.max(1,it.l):1};
@@ -74,7 +78,7 @@ function startPlace(t,moveId){ closePanel(); closeSheet(); const it=moveId?T.byI
     [p.i,p.j]=best||[v.i,v.j]; town.focusCell(p.i,p.j); }
   document.body.classList.add('placing'); town.startPlace(p); renderPlaceBar(); Snd.pop(); }
 function renderPlaceBar(){ const p=town.place, el=$('#placebar'); if(!p){ el.classList.remove('on'); return; } const d=TD.TB[p.t]; const bi=T.buildInfo(p.t);
-  const cost=p.moveId?'Moving':(bi.badges?B(bi.badges):C(bi.cost[0]))+(bi.cost[1]?` 🧱${bi.cost[1]}`:'');
+  const cost=p.moveId?'Moving':(bi.badges?B(bi.badges):C(bi.cost[0]))+(bi.cost[1]?` 💧${bi.cost[1]}`:'');
   el.innerHTML=`<div class="pb-t">${d.icon} <b>${d.name}</b><small>${cost} · ${d.w}×${d.h}${p.ok?'':' · <span class="bad">can\'t go here</span>'}</small><small class="hint">Drag the building or tap a spot</small></div>
    <div class="pb-b"><button class="pbtn red" data-act="pcancel">✕</button>${d.w!==d.h||!d.instant?`<button class="pbtn blue" data-act="prot">↻</button>`:''}<button class="pbtn green ${p.ok?'':'cant'}" data-act="pok">✓</button></div>`; el.classList.add('on'); }
 function endPlace(){ town.endPlace(); document.body.classList.remove('placing'); renderPlaceBar(); }
@@ -87,19 +91,19 @@ function confirmPlace(){ const p=town.place; if(!p) return; if(!p.ok) return err
 /* ---------- v4: town building sheet ---------- */
 let sheetTown=null;
 function openTown(id){ if(town.place||town.mode==='expand') return; sheetId=null; scene.select(null); sheetTown=id; town.select(id); Snd.pop(); renderSheet(); $('#sheet').classList.add('on'); }
-function fxLine(d,l){ const f=d.fx||{}; const out=[]; if(d.rate) out.push(`${d.res==='mats'?'🧱':ICON.coin}<b>${fmt(Math.round(TD.rateAt(Object.keys(TD.TB).find(k=>TD.TB[k]===d),l)))}</b>/hr`); if(d.pop) out.push(`👥 ${d.pop*l}`);
+function fxLine(d,l){ const f=d.fx||{}; const out=[]; if(d.rate) out.push(`${d.res==='mats'?'💧':ICON.coin}<b>${fmt(Math.round(TD.rateAt(Object.keys(TD.TB).find(k=>TD.TB[k]===d),l)))}</b>/hr`); if(d.pop) out.push(`👥 ${d.pop*l}`);
   const lv=1+.5*(l-1); if(f.happy||d.happy) out.push(`😊 +${(((f.happy||0)*lv)+(d.happy||0)*l*.5).toFixed(1)}`); if(f.dmg) out.push(`🛡️ −${Math.round(f.dmg*lv*100)}% disaster damage`); if(f.xp) out.push(`⭐ +${Math.round(f.xp*lv*100)}% crew XP`);
   if(f.trucks) out.push(`🚒 +${Math.floor(f.trucks*l+.01)} truck`); if(f.calls) out.push(`📟 +${Math.floor(f.calls*lv+.01)} pager slot`); if(f.water) out.push(`💧 +${Math.round(f.water*lv*100)}% hose tank`); if(f.heli) out.push('🚁 Water bomber'); if(f.haz) out.push(`☣️ spills ${Math.round(f.haz*lv*100)}% slower`); if(f.stable) out.push(`🩺 +${Math.round(f.stable*lv*100)}% patient time`); if(f.prod) out.push(`⚡ +${Math.round(f.prod*lv*100)}% production`);
   return out.join(' · ')||d.desc; }
 function renderTownSheet(){ const i=T.info(sheetTown); if(!i){ closeSheet(); return; } const {it,d}=i; const el=$('#sheet .sbody'); let act='';
   const call=S.calls.find(c=>c.at===it.id&&c.state==='open');
-  if(it.dmg){ const [c,m]=T.repairCost(it); act=`<div class="note">🔥 Damaged${G.dis()?' in the '+D.DISASTERS[G.dis().type].name.toLowerCase():''}. It has stopped working until it's fixed.</div><button class="gbtn green wide ${S.coins<c||S.materials<m?'cant':''}" data-act="trepair" data-id="${it.id}">🔨 Repair · ${C(c)} · 🧱 ${m}</button>`; }
+  if(it.dmg){ const [c,m]=T.repairCost(it); act=`<div class="note">🔥 Damaged${G.dis()?' in the '+D.DISASTERS[G.dis().type].name.toLowerCase():''}. It has stopped working until it's fixed.</div><button class="gbtn green wide ${S.coins<c||S.materials<m?'cant':''}" data-act="trepair" data-id="${it.id}">🔨 Repair · ${C(c)} · 💧 ${m}</button>`; }
   else if(i.up) act=`<div class="pbar big"><i data-pstart="${it.up.start}" data-pend="${it.up.end}"></i><span>${it.l?`Upgrading to Lv ${it.l+1}`:'Under construction'} · <b data-end="${it.up.end}"></b></span></div>
      <div class="row2"><button class="gbtn purple" data-act="tspeed" data-id="${it.id}">Finish now <span data-scost="${it.up.end}"></span></button><button class="gbtn orange" data-act="tad" data-id="${it.id}">📺 −30 min <small>DEMO</small></button></div>`;
   else if(!i.next) act=d.max>1?`<div class="note gold">⭐ Max level.</div>`:'';
   else if(i.next>i.maxL) act=`<div class="note">🔒 Lv ${i.next} needs station level ${i.next-1}. Level the station with call-outs, upgrades and comps.</div>`;
-  else act=`<button class="gbtn green wide ${S.coins<i.cost[0]||S.materials<i.cost[1]?'cant':''}" data-act="tup" data-id="${it.id}">Upgrade to Lv ${i.next} · ${C(i.cost[0])}${i.cost[1]?` · 🧱 ${i.cost[1]}`:''} · ⏱ ${fmtTime(i.time)}</button>`;
-  const prod=d.rate&&it.l?`<div class="stat"><span>${T.producing(it)?'Producing':'Paused'} ${d.res==='mats'?'🧱 materials':'coins'}</span><b>${fmt(Math.round(i.rate))}/hr · ${fmt(Math.floor(it.store||0))}/${fmt(Math.round(i.cap))}</b></div>${d.shop?`<div class="stat"><span>Customers (needs residents)</span><b>${Math.round(T.customers()*100)}%</b></div>`:''}`:'';
+  else act=`<button class="gbtn green wide ${S.coins<i.cost[0]||S.materials<i.cost[1]?'cant':''}" data-act="tup" data-id="${it.id}">Upgrade to Lv ${i.next} · ${C(i.cost[0])}${i.cost[1]?` · 💧 ${i.cost[1]}`:''} · ⏱ ${fmtTime(i.time)}</button>`;
+  const prod=d.rate&&it.l?`<div class="stat"><span>${T.producing(it)?'Producing':'Paused'} ${d.res==='mats'?'💧 materials':'coins'}</span><b>${fmt(Math.round(i.rate))}/hr · ${fmt(Math.floor(it.store||0))}/${fmt(Math.round(i.cap))}</b></div>${d.shop?`<div class="stat"><span>Customers (needs residents)</span><b>${Math.round(T.customers()*100)}%</b></div>`:''}`:'';
   el.innerHTML=`<div class="shead"><div class="sicon">${d.icon}</div><div><div class="stitle">${d.name}${d.max>1?` <small>Lv ${it.l}</small>`:''}</div>${d.max>1?`<div class="stars">${'★'.repeat(it.l)}<span>${'★'.repeat(Math.max(0,d.max-it.l))}</span></div>`:''}</div><button class="xbtn" data-act="closesheet">✕</button></div>
     <div class="sdesc">${d.desc}</div>${d.max>1||d.fx?`<div class="effect"><div><small>Now</small>${it.l?fxLine(d,it.l):'Being built'}</div>${i.next?`<div class="arrow">➜</div><div class="next"><small>Lv ${i.next}</small>${fxLine(d,i.next)}</div>`:''}</div>`:''}${prod}
     ${call?`<button class="gbtn red wide" data-act="tcall" data-id="${call.id}">🚨 ${G.callType(call).name} here! Respond</button>`:''}${act}
@@ -108,9 +112,9 @@ function renderTownSheet(){ const i=T.info(sheetTown); if(!i){ closeSheet(); ret
 /* ---------- v4: build menu ---------- */
 let buildCat='home';
 function pBuild(){ const cats=TD.CATS.map(([k,ic,n])=>`<button class="ctab ${k===buildCat?'on':''}" data-act="bcat" data-v="${k}">${ic}<small>${n}</small></button>`).join('');
-  let h=`<div class="ctabs">${cats}</div><div class="infobar">👷 Builders ${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()} free · 🧱 ${S.materials} · 👥 ${T.population()} residents · <button class="gbtn orange sm" data-act="collectall">Collect all</button></div>`;
-  if(buildCat==='land'){ const pi=T.plotInfo(); h+=`<div class="ccard"><div class="cic">🗺️</div><div class="cinfo"><div class="cname">Expand your land</div><div class="csub">You own ${S.tw.plots.length} plots (max ${TD.plotsAllowed(S.level)} at station level ${S.level}). Next plot ${C(pi.cost)}${pi.mats?` 🧱${pi.mats}`:''}</div></div><button class="gbtn green sm" data-act="expand">Choose plot</button></div>`; return ['🔨 Build',h]; }
-  h+='<div class="bgrid">'; for(const t of TD.TB_ORDER){ const d=TD.TB[t]; if(d.cat!==buildCat) continue; const bi=T.buildInfo(t); const cost=bi.badges?B(bi.badges):(bi.cost[0]?C(bi.cost[0]):'Free')+(bi.cost[1]?` 🧱${bi.cost[1]}`:'');
+  let h=`<div class="ctabs">${cats}</div><div class="infobar">👷 Builders ${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()} free · 💧 ${S.materials} · 👥 ${T.population()} residents · <button class="gbtn orange sm" data-act="collectall">Collect all</button></div>`;
+  if(buildCat==='land'){ const pi=T.plotInfo(); h+=`<div class="ccard"><div class="cic">🗺️</div><div class="cinfo"><div class="cname">Expand your land</div><div class="csub">You own ${S.tw.plots.length} plots (max ${TD.plotsAllowed(S.level)} at station level ${S.level}). Next plot ${C(pi.cost)}${pi.mats?` 💧${pi.mats}`:''}</div></div><button class="gbtn green sm" data-act="expand">Choose plot</button></div>`; return ['🔨 Build',h]; }
+  h+='<div class="bgrid">'; for(const t of TD.TB_ORDER){ const d=TD.TB[t]; if(d.cat!==buildCat) continue; const bi=T.buildInfo(t); const cost=bi.badges?B(bi.badges):(bi.cost[0]?C(bi.cost[0]):'Free')+(bi.cost[1]?` 💧${bi.cost[1]}`:'');
     h+=`<button class="bcard ${bi.why?'lock':''}" data-act="bplace" data-id="${t}"><div class="bic">${d.icon}</div><b>${d.name}</b><small class="bsz">${d.w}×${d.h}${d.max>1?` · ${d.max} levels`:''}</small><small class="bfx">${fxLine(d,1)}</small><div class="bcost">${bi.why?`🔒 ${bi.why}`:cost}</div><span class="bcnt">${bi.n}/${bi.max}</span></button>`; }
   return ['🔨 Build',h+'</div>']; }
 
@@ -122,7 +126,11 @@ function hud(){
   $('#builders').innerHTML=`👷 <b>${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()}</b>`;
   const open=S.calls.filter(c=>c.state==='open').length; const cb=$('#btnCalls .count'); cb.textContent=open; cb.style.display=open?'':'none';
   const out=S.calls.filter(c=>c.state==='out').length; $('#trucks').innerHTML=`🚒 <b>${G.freeAppliances()}/${G.trucksTotal()}</b>`;
-  $('#town').innerHTML=`😊 <b>${Math.round(G.happyNow())}%</b> 🧱 <b>${S.materials}</b> 👥 <b>${T.population()}</b>`;
+  $('#town').innerHTML=`😊 <b>${Math.round(G.happyNow())}%</b> 👥 <b>${T.population()}</b>`;
+  { $('#water').textContent=fmt(S.materials); const cc=A.coinCap(), wc=A.waterCap(); $('#coinCapF').style.width=Math.min(100,S.coins/cc*100)+'%'; $('#waterCapF').style.width=Math.min(100,S.materials/wc*100)+'%';
+    $('#coinCapF').parentNode.classList.toggle('full',S.coins>=cc); $('#waterCapF').parentNode.classList.toggle('full',S.materials>=wc);
+    const sh=A.shieldLeft(); const sp=$('#shieldp'); sp.style.display=sh?'':'none'; if(sh) sp.innerHTML=`🛡️ <b>${fmtTime(sh/1000)}</b>`;
+    const nd=S.def.log.filter(x=>!x.seen).length; $('#defNew').style.display=nd?'':'none'; const q=S.army.queue.length; const ac=$('#armyCnt'); ac.style.display=q?'':'none'; ac.textContent=q; }
   disBanner();
   const q=G.currentQuest(); const qe=$('#quest');
   if(q){ const done=q.done(); const h=`<span class="qi">🎯</span><span class="qt">${q.text}</span>${done?`<button class="gbtn green sm" data-act="claim">Claim ${ICON.badge}${q.reward}</button>`:`<span class="qr">${ICON.badge}${q.reward}</span>`}`;
@@ -174,7 +182,7 @@ function openPanel(v,arg){ const was=view; view=v; viewArg=arg; if(v!=='dispatch
   Music.setTrack(v==='compete'?'comp':'base'); }
 function closePanel(){ view=null; $('#panel').classList.remove('on'); Music.setTrack('base'); }
 function renderPanel(reset){ if(!view) return; const body=$('#panel .pbody'), st=reset?0:body.scrollTop; const title=$('#panel .ptitle');
-  const R={build:pBuild,calls:pCalls,dispatch:pDispatch,crew:pCrew,crewDetail:pCrewDetail,compete:pCompete,leader:pLeader,shop:pShop,settings:pSettings,disaster:pDisaster,zone:pZone}[view];
+  const R={build:pBuild,calls:pCalls,dispatch:pDispatch,crew:pCrew,crewDetail:pCrewDetail,compete:pCompete,leader:pLeader,shop:pShop,settings:pSettings,disaster:pDisaster,zone:pZone,attack:pAttack,army:pArmy,deflog:pDefLog}[view];
   const [t,h]=R(viewArg); title.innerHTML=t; body.innerHTML=h; body.scrollTop=st; liveTimers(body); }
 function pCalls(){ const open=S.calls.filter(c=>c.state==='open'), out=S.calls.filter(c=>c.state==='out');
   let h=`<div class="infobar">🚒 Free trucks <b>${G.freeAppliances()}/${D.appliances(G.bl('engine'))}</b> · 💺 ${D.seats(G.bl('engine'))} seats each · 👥 ${S.crew.filter(c=>!c.busy).length} crew free</div>`;
@@ -272,7 +280,7 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('[data-act
   case 'pok': confirmPlace(); break;
   case 'expand': closePanel(); town.setExpand(true); document.body.classList.add('placing'); $('#placebar').innerHTML=`<div class="pb-t">🗺️ <b>Expand land</b><small>Tap a glowing plot next to town</small></div><div class="pb-b"><button class="pbtn green" data-act="expanddone">Done</button></div>`; $('#placebar').classList.add('on'); scene.zoom=.6; scene.updateCam(); renderTownLabels(); break;
   case 'expanddone': town.setExpand(false); document.body.classList.remove('placing'); $('#placebar').classList.remove('on'); renderTownLabels(); break;
-  case 'collectall': { const r=T.collectAll(); if(!r.coins&&!r.mats){ toast('Nothing to collect yet'); break; } Snd.collect(); toast(`Collected ${r.coins?'+'+fmt(r.coins)+' coins ':''}${r.mats?'+'+r.mats+' 🧱':''}`,'gold'); after(); break; }
+  case 'collectall': { const r=T.collectAll(); if(!r.coins&&!r.mats){ toast('Nothing to collect yet'); break; } Snd.collect(); toast(`Collected ${r.coins?'+'+fmt(r.coins)+' coins ':''}${r.mats?'+'+r.mats+' 💧':''}`,'gold'); after(); break; }
   case 'tup': { if(err(T.startUp(id))) break; Snd.hammer(); toast(`👷 Builder started on the ${TD.TB[T.byId(id).t].name}`,'good'); after(); break; }
   case 'tspeed': { if(err(T.speedUpT(id))) break; Snd.speedUp(); handle(G.tick()); after(); break; }
   case 'tad': fakeAd(()=>{ T.cutTimeT(id,1800); toast('⏩ 30 minutes skipped (demo ad)','gold'); handle(G.tick()); after(); }); break;
@@ -283,6 +291,16 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('[data-act
   case 'tcall': { const c=S.calls.find(x=>x.id===id); if(c){ dispatchSel=G.autoTeam(c); openPanel('dispatch',id); Snd.pager(); } break; }
   case 'tdaynight': S.prefs.daynight=S.prefs.daynight===false; town.dayKey=''; after(); break;
   case 'closepanel': closePanel(); break;
+  case 'findraid': scout(true); break; case 'raidnext': scout(true); break; case 'raidgo': raidGo(); break; case 'raidhome': raidHome(); break; case 'raidend': if(raid&&raid.B&&!raid.B.over) War.end(raid.B); break;
+  case 'dsel': if(raid){ raid.sel={t:id}; renderRaid(); } break; case 'dhero': if(raid){ raid.sel={hero:id}; renderRaid(); } break;
+  case 'ability': if(raid){ const u=raid.B.units.find(x=>String(x.id)===id); if(u&&War.useAbility(raid.B,u)) renderRaid(); } break;
+  case 'rspeed': if(raid){ raid.view.speed=raid.view.speed>=4?1:raid.view.speed*2; renderRaid(); } break; case 'rskip': if(raid){ raid.view.speed=40; } break;
+  case 'replay': openReplay(id); break; case 'deflog': openPanel('deflog'); break; case 'opencup': openPanel('compete'); break; case 'openarmy': openPanel('army'); break; case 'opencrew': openPanel('crew'); break;
+  case 'armytab': armyTab=b.dataset.v; renderPanel(true); break;
+  case 'ttrain': { if(err(A.train(id))) break; Snd.train(); after(); break; } case 'untrain': A.untrain(+id); after(); break;
+  case 'trainfin': if(err(A.trainFinish())) break; Snd.collect(); handle(G.tick()); after(); break;
+  case 'research': { if(err(A.research(id))) break; Snd.thud(); toast(`🧪 Researching ${WD.TROOPS[id].name}`,''); after(); break; } case 'labfin': if(err(A.labFinish())) break; Snd.collect(); handle(G.tick()); after(); break;
+  case 'herotog': A.toggleHero(id); after(); break;
   case 'open': openPanel(b.dataset.v); break;
   case 'upgrade': { if(err(G.startUpgrade(id))) break; Snd.hammer(); toast(`👷 Builder started on the ${D.BUILDINGS[id].name}`,'good'); after(); break; }
   case 'speed': { if(err(G.speedUp(id))) break; Snd.speedUp(); G.tick(); handle(G.tick()); after(); break; }
@@ -321,7 +339,7 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('[data-act
   case 'sound': { const on=!(S.prefs.sfx||S.prefs.music); S.prefs.sfx=on; S.prefs.music=on; setAudioPrefs(S.prefs); after(); break; }
   }
 });
-['#btnCalls','#btnCrew','#btnComp','#btnShop','#btnBuild'].forEach((s,i)=>$(s).addEventListener('click',()=>{ Snd.tap(); openPanel(['calls','crew','compete','shop','build'][i]); }));
+['#btnCalls','#btnArmy','#btnAttack','#btnShop','#btnBuild'].forEach((s,i)=>$(s).addEventListener('click',()=>{ Snd.tap(); openPanel(['calls','army','attack','shop','build'][i]); }));
 $('#btnSettings').addEventListener('click',()=>{ Snd.tap(); openPanel('settings'); });
 $('#btnSound').addEventListener('click',()=>{ Snd.tap(); const on=!(S.prefs.sfx||S.prefs.music); S.prefs.sfx=on; S.prefs.music=on; setAudioPrefs(S.prefs); after(); });
 $('#badgePlus').addEventListener('click',()=>{ Snd.tap(); openPanel('shop'); });
@@ -374,9 +392,9 @@ function townMap(a){ const def=D.DISASTERS[a.type];
    <path d="M0 40 H360 M120 0 V270 M0 245 H360 M250 40 V270" stroke="#e8dfc8" stroke-width="10"/>${[[30,20],[150,20],[270,15],[20,190],[150,200],[280,230],[200,120]].map(([x,y])=>`<rect x="${x}" y="${y}" width="26" height="18" rx="3" fill="#f1d9b5" stroke="#8a6a4a"/><path d="M${x-3} ${y} L${x+13} ${y-10} L${x+29} ${y}Z" fill="#c0392b"/>`).join('')}`;
   for(const z of def.zones){ const st=G.zoneState(z.id), [x,y]=ZPOS[z.id]||[180,135]; const col=st.state==='open'?'#e53935':st.state==='done'?'#43a047':'#757575';
     h+=`<g class="zpin ${st.state}" data-act="${st.state==='open'&&a.phase==='active'?'zone':''}" data-id="${z.id}"><circle cx="${x}" cy="${y}" r="22" fill="${col}" stroke="#fff" stroke-width="4">${st.state==='open'?'<animate attributeName="r" values="20;25;20" dur="1.2s" repeatCount="indefinite"/>':''}</circle>
-      <text x="${x}" y="${y+7}" text-anchor="middle" font-size="20">${z.id==='base'?'🚒':D.SCENES[z.task]?{firebreak:'🔥',hose:'🔥',sandbag:'🌊',ladder:'🪜',chainsaw:'🌳',tarp:'🏠',rubble:'🧱',gas:'💨',cpr:'❤️',hazmat:'☣️',extricate:'🚗'}[z.task]:'❗'}</text></g>`; }
+      <text x="${x}" y="${y+7}" text-anchor="middle" font-size="20">${z.id==='base'?'🚒':D.SCENES[z.task]?{firebreak:'🔥',hose:'🔥',sandbag:'🌊',ladder:'🪜',chainsaw:'🌳',tarp:'🏠',rubble:'💧',gas:'💨',cpr:'❤️',hazmat:'☣️',extricate:'🚗'}[z.task]:'❗'}</text></g>`; }
   return h+'</svg>'; }
-function pDisaster(){ const a=G.dis(); if(!a){ return ['🌤️ All clear',`<div class="empty">No disaster right now. The town's calm... for now.</div><div class="stat"><span>Town happiness</span><b>${Math.round(S.town.happy)}%</b></div><div class="stat"><span>Reputation</span><b>${S.town.rep}</b></div><div class="stat"><span>Materials</span><b>🧱 ${S.materials}</b></div>`]; }
+function pDisaster(){ const a=G.dis(); if(!a){ return ['🌤️ All clear',`<div class="empty">No disaster right now. The town's calm... for now.</div><div class="stat"><span>Town happiness</span><b>${Math.round(S.town.happy)}%</b></div><div class="stat"><span>Reputation</span><b>${S.town.rep}</b></div><div class="stat"><span>Materials</span><b>💧 ${S.materials}</b></div>`]; }
   const def=D.DISASTERS[a.type]; let h=`<div class="dishead ${a.phase}"><div class="disic">${def.icon}</div><div><b>${def.name}</b><small>${def.warn}</small></div></div>`;
   if(a.phase==='warn') return [`⚠️ ${def.name}`, h+`<div class="infobar">⏳ Impact in <b data-end="${a.warnEnd}"></b>. Crews are gearing up.</div><button class="gbtn red wide" data-act="brace">🚨 Brace! Start now</button>`];
   if(a.phase==='active'){ const open=a.zones.filter(z=>z.state==='open').length;
@@ -384,10 +402,10 @@ function pDisaster(){ const a=G.dis(); if(!a){ return ['🌤️ All clear',`<div
     for(const z of def.zones){ const st=G.zoneState(z.id); h+=`<div class="ccard zcard ${st.state}" data-act="${st.state==='open'?'zone':''}" data-id="${z.id}"><div class="cic">${z.id==='base'?'🚒':def.icon}</div><div class="cinfo"><div class="cname">${z.name}</div>
       <div class="chips">${roleChip(z.lead,1,S.crew.some(m=>m.role===z.lead&&G.shiftsLeft(m)>0))}<span class="chip">🎮 ${D.SCENES[z.task].name}</span></div><div class="csub">${st.state==='open'?(z.base?'Your own station is hit!':a.items?.[z.id]?.length?`Damaged: ${a.items[z.id].map(id=>T.byId(id)).filter(Boolean).map(x=>TD.TB[x.t].icon+' '+TD.TB[x.t].name).join(', ')} · 3★ saves them`:`Protects: ${D.TOWN[z.town]?.name||''}`):st.state==='done'?'★'.repeat(st.stars)+' Sorted':'Lost'}</div></div>${st.state==='open'?'<div class="go">›</div>':''}</div>`; }
     h+=`<button class="gbtn wide sm2" data-act="standdown">🏳️ Stand down remaining zones</button>`; return [`${def.icon} ${def.name}`,h]; }
-  const list=G.rebuildList(); h+=`<div class="rewards"><span>${C(a.rewards.coins)}</span><span>🧱 <b>${a.rewards.mats}</b></span><span>⭐ <b>${a.rewards.rep}</b> rep</span></div><div class="sect">Rebuild · you have ${C(S.coins)} and 🧱 ${S.materials}</div>`;
+  const list=G.rebuildList(); h+=`<div class="rewards"><span>${C(a.rewards.coins)}</span><span>💧 <b>${a.rewards.mats}</b></span><span>⭐ <b>${a.rewards.rep}</b> rep</span></div><div class="sect">Rebuild · you have ${C(S.coins)} and 💧 ${S.materials}</div>`;
   if(!list.length) h+=`<div class="empty">Nothing was damaged. Your crews saved every street!</div><button class="gbtn green wide" data-act="disfinish">🎉 Celebrate with the town</button>`;
-  for(const it of list){ const ok=S.coins>=it.cost[0]&&S.materials>=it.cost[1]; h+=`<div class="ccard"><div class="cic">${it.icon}</div><div class="cinfo"><div class="cname">${it.name}</div><div class="csub">${it.kind==='base'?'Your station · works one level lower until fixed':'Town · residents are doing it tough'}</div></div><button class="gbtn sm ${ok?'green':'cant'}" data-act="repair" data-k="${it.kind}" data-id="${it.id}">🔨 ${C(it.cost[0])}<br>🧱 ${it.cost[1]}</button></div>`; }
-  h+=`<p class="fine">Earn 🧱 materials from disaster zones and 2-star call-outs. Rebuilding lifts town happiness, which boosts pay.</p>`; return ['🔨 Rebuild the town',h]; }
+  for(const it of list){ const ok=S.coins>=it.cost[0]&&S.materials>=it.cost[1]; h+=`<div class="ccard"><div class="cic">${it.icon}</div><div class="cinfo"><div class="cname">${it.name}</div><div class="csub">${it.kind==='base'?'Your station · works one level lower until fixed':'Town · residents are doing it tough'}</div></div><button class="gbtn sm ${ok?'green':'cant'}" data-act="repair" data-k="${it.kind}" data-id="${it.id}">🔨 ${C(it.cost[0])}<br>💧 ${it.cost[1]}</button></div>`; }
+  h+=`<p class="fine">Earn 💧 materials from disaster zones and 2-star call-outs. Rebuilding lifts town happiness, which boosts pay.</p>`; return ['🔨 Rebuild the town',h]; }
 function pZone(zid){ const a=G.dis(); if(!a||a.phase!=='active'){ setTimeout(()=>openPanel('disaster')); return ['','']; } const z=G.zoneDef(zid), sc=D.SCENES[z.task]; const err0=G.zoneTeamOk(zid,zoneSel);
   let h=`<div class="dhead"><div class="cic big">${z.id==='base'?'🚒':D.DISASTERS[a.type].icon}</div><div><div class="cname">${z.name}</div><div class="blurb">${sc.name}: ${sc.how}</div></div></div>
    <div class="reqbox"><div><small>LEADER NEEDED</small><div class="chips">${roleChip(z.lead,1,zoneSel.some(i=>S.crew.find(c=>c.id===i)?.role===z.lead))}</div></div><div><small>CREW (1-4) · each Firey can work 2 zones</small></div></div>
@@ -397,7 +415,7 @@ function pZone(zid){ const a=G.dis(); if(!a||a.phase!=='active'){ setTimeout(()=
 function playZone(zid, ids){ const a=G.dis(), z=G.zoneDef(zid), team=G.teamOf(ids); const help=G.teamHelp(team, z.kind);
   const variant={hose:z.id==='base'?'house':'house',ladder:'flood',extricate:'mva'}[z.task]; Music.boost=20;
   enRoute(`${D.DISASTERS[a.type].icon} ${z.name}`,()=>runAction($('#act'),{scene:z.task,title:z.name,icon:D.DISASTERS[a.type].icon,tier:2+Math.min(2,S.dis.count),diff:1.1,help,variant,people:z.task==='ladder'?2:undefined},res=>{
-    const r=G.finishZone(zid,res.stars,ids); res.stars?Snd.callWin():Snd.callFail(); toast(`${res.stars?'✅':'😬'} ${z.name}: ${'★'.repeat(res.stars)||'no stars'} · +${fmt(r.coins)} coins, +${r.mats} 🧱${r.saved?` · ${r.saved} saved from damage!`:''}`, res.stars?'good':'bad');
+    const r=G.finishZone(zid,res.stars,ids); res.stars?Snd.callWin():Snd.callFail(); toast(`${res.stars?'✅':'😬'} ${z.name}: ${'★'.repeat(res.stars)||'no stars'} · +${fmt(r.coins)} coins, +${r.mats} 💧${r.saved?` · ${r.saved} saved from damage!`:''}`, res.stars?'good':'bad');
     Music.boost=18; after(); openPanel('disaster'); })); }
 function disBanner(){ const a=G.dis(), el=$('#disBanner'); if(!a){ el.style.display='none'; return; } const def=D.DISASTERS[a.type]; let h;
   if(a.phase==='warn') h=`⚠️ <b>${def.name.toUpperCase()} WARNING</b> · <span data-end="${a.warnEnd}"></span>`;
@@ -409,7 +427,7 @@ function disasterDone(r){ const def=D.DISASTERS[r.type]; Snd.win(); setTimeout((
   modal(`<h2 class="gold">🏆 Town rebuilt!</h2><p>The ${def.name.toLowerCase()} is behind us. Snag Flats owes you a few cold ones.</p><div class="rewards"><span>${B(r.badges)}</span><span>⭐ ${'★'.repeat(Math.min(3,Math.round(r.stars/Math.max(1,r.total))))} avg</span></div><div class="stat"><span>Zones handled</span><b>${r.good}/${r.total}</b></div><div class="stat"><span>Town happiness</span><b>${Math.round(S.town.happy)}%</b></div>`,[{label:'Back to work',fn:()=>{ closePanel(); }}],'results'); }
 
 /* ---------- events from the game tick ---------- */
-function handle(evts){ for(const e of evts){
+function handle(evts){ for(const e of evts){ handleV5(e);
   if(e.townBuilt){ const it=T.byId(e.townBuilt); if(it){ Snd.buildDone(); toast(`🎉 ${TD.TB[it.t].name} ${it.l>1?'is now level '+it.l:'is open'}!`,'gold'); setTimeout(()=>town.bounce(it.id),50); } }
   if(e.built){ Snd.buildDone(); toast(`🎉 ${D.BUILDINGS[e.built].name} is now level ${G.bl(e.built)}!`,'gold'); scene.bounce(e.built); }
   if(e.newCall){ Snd.pager(); const t=G.callType(e.newCall); const at=e.newCall.at&&T.byId(e.newCall.at); toast(`📟 New call: ${t.icon} ${t.name}${at?` at your ${TD.TB[at.t].name}`:''}`,''); }
@@ -433,8 +451,8 @@ function collectSizzle(){ const n=G.collectSizzle(); if(n){ Snd.collect(); toast
 /* ---------- loop ---------- */
 let last=performance.now(), acc=0, accS=0;
 function frame(t){ const dt=Math.min(.1,(t-last)/1000); last=t; acc+=dt; accS+=dt;
-  scene.update(dt); weather.update(dt); placeLabels();
-  if(acc>=.25){ acc=0; handle(G.tick()); hud(); liveTimers(); }
+  scene.update(dt); if(!raid){ weather.update(dt); placeLabels(); }
+  if(acc>=.25){ acc=0; handle(G.tick()); hud(); liveTimers(); raidFrame(); }
   if(accS>=5){ accS=0; G.save(); }
   requestAnimationFrame(frame); }
 syncScene(); syncWeather(); syncHeads(); hud();
@@ -445,9 +463,11 @@ window.addEventListener('pagehide',()=>G.save());
 const away=(Date.now()-S.lastSeen)/1000;
 if(boot.fresh){
   modal(`<div class="logo">Firey<span>Station Tycoon</span></div><p>G'day, Boss! You've taken over <b>Snag Flats Station</b>: a tired engine bay, four keen Aussie animal Fireys and a sausage sizzle.</p>
-    ${boot.migrated?.fromV3?`<div class="note gold">Welcome to v4! Your station, crew and trophies came across, and you now have a town to build around the station. Tap 🔨 Build.</div>`:boot.migrated?.fromV2?`<div class="note gold">Welcome to v3! Your station, coins and trophies came across, and your ${boot.migrated.crew} crew are now Aussie animal Fireys.</div>`:boot.migrated?`<div class="note gold">Thanks for playing v1! Your old progress is now <b>${fmt(boot.migrated.coins)} coins</b> and <b>${boot.migrated.badges} badges</b>.</div>`:''}
+    ${boot.migrated?.fromV4?`<div class="note gold">Welcome to v5! Your town, crew and trophies came across. You now have a ⛺ barracks, a 🔫 cannon and some 🧱 walls. Train crews in ⛺ Army, then hit ⚔️ Attack! for a drill raid.</div>`:boot.migrated?.fromV3?`<div class="note gold">Welcome to v4! Your station, crew and trophies came across, and you now have a town to build around the station. Tap 🔨 Build.</div>`:boot.migrated?.fromV2?`<div class="note gold">Welcome to v3! Your station, coins and trophies came across, and your ${boot.migrated.crew} crew are now Aussie animal Fireys.</div>`:boot.migrated?`<div class="note gold">Thanks for playing v1! Your old progress is now <b>${fmt(boot.migrated.coins)} coins</b> and <b>${boot.migrated.badges} badges</b>.</div>`:''}
     <p>Build your own town around the station, get hands-on at call-outs, save the town when disasters hit, upgrade your station, gear up your crew and beat rival stations at the comps.</p><p class="fine">Fictional game, original art. Not affiliated with any fire service.</p>`,
     [{label:'🚒 Start shift',fn:()=>{ Snd.unlock(); S.nextCallAt=Date.now()+1500; G.save(); }}],'welcome');
+} else if(away>20*60&&A.offlineRaids(away*1000).length){ const rs=S.def.log.filter(x=>!x.seen); handle(G.tick());
+  modal(`<h2>While you were away…</h2><p>${rs.length} raid${rs.length>1?'s':''} hit your base.</p>${rs.map(e=>`<div class="stat"><span>${e.name}: ${'⭐'.repeat(e.stars)||'🛡️ held'}</span><b>${e.pct}% · 🪙-${fmt(e.lost.coins)}</b></div>`).join('')}`,[{label:'▶ Watch replay',fn:()=>openReplay(rs[0].id)},{label:'Later',fn:()=>{}}]);
 } else { const evts=G.tick(); const res=evts.filter(e=>e.result).map(e=>e.result); const built=evts.filter(e=>e.built).map(e=>e.built);
   if(away>120 && (res.length||built.length||S.sizzle.stored>=1)){
     modal(`<h2>Welcome back, Boss!</h2><p>You were away ${fmtTime(away)}.</p>
@@ -456,4 +476,87 @@ if(boot.fresh){
      ${S.sizzle.stored>=1?`<div class="stat"><span>Sausage sizzle takings waiting</span><b>${fmt(S.sizzle.stored)}</b></div>`:''}`,
      [{label:'Collect & get to work',fn:()=>{ collectSizzle(); }}]); }
   handle(evts); }
+
+/* =====================================================================================
+   v5: drill raids, defence replays, army / research / heroes, attack hub
+   ===================================================================================== */
+const LEAGUE_IC=['🥉','🥈','🥇','💠','💎','👑'];
+function saveCam(){ return {x:scene.pan.x,y:scene.pan.y,z:scene.zoom,b:{...scene.bounds},zMin:scene.zMin}; }
+function restoreCam(c){ scene.bounds=c.b; scene.zMin=c.zMin; scene.pan.set(c.x,c.y); scene.zoom=c.z; scene.updateCam(); }
+function raidSfx(k){ if(k==='hose') Snd.hose(); else if(k==='boom') Snd.boom(); else if(k==='wall') Snd.wall(); else if(k==='ability') Snd.ability(); }
+function viewOpts(extra){ return Object.assign({ fxEl:$('#battleFx'), onTap:raidTap, onOver:raidOver, onStar:raidStar, onDestroy:raidDestroy, sfx:raidSfx }, extra); }
+async function scout(pay){ const r=await A.findRaid(pay); if(r.err) return err(r.err); closePanel(); closeSheet(); if(town.place) endPlace();
+  if(raid&&raid.view) raid.view.dispose(); else raid={cam:saveCam()};
+  const B=War.createBattle({ layout:r.base, army:{}, seed:1 }); raid.mode='scout'; raid.B=B; raid.view=new BattleView(scene,town,B,viewOpts());
+  scene.battle=raid.view; document.body.classList.add('raiding'); scene.zMin=.22; scene.bounds={u0:-24,u1:24,v0:-24,v1:24}; scene.pan.set(0,0); scene.zoom=.34; scene.updateCam(); raid.view.flashRed(); Snd.swish(); renderRaid(); }
+function firstAvail(B){ const t=WD.TROOP_ORDER.find(t=>B.deployLeft[t]>0); if(t) return {t}; const h=B.heroesLeft[0]; return h?{hero:h.id}:null; }
+function raidGo(){ const r=A.startRaid(); if(r.err) return err(r.err); raid.opp=S.raidOpp; raid.view.B=r.B; raid.B=r.B; raid.view.running=true; raid.mode='fight'; raid.sel=firstAvail(r.B); Snd.siren(); toast('⚔️ Drill on! Tap around the edge to send crews in. Red zone = too close.',''); renderRaid(); G.save(); }
+function raidTap(x,y){ if(!raid) return; if(raid.mode==='scout') return toast('Tap ⚔️ Attack! to start the drill'); if(raid.mode!=='fight'||raid.B.over) return; const sel=raid.sel; if(!sel) return toast('Nothing left to send');
+  const r=War.deploy(raid.B, sel.t, x, y, sel.hero?{hero:sel.hero}:{}); if(r==='red'){ raid.view.flashRed(); Snd.no(); return toast("Can't deploy in the red zone",'bad'); } if(r==='none') return toast('None left');
+  Snd.deploy(); if(sel.hero) raid.sel=firstAvail(raid.B); else if(!(raid.B.deployLeft[sel.t]>0)) raid.sel=firstAvail(raid.B); renderRaid(); }
+function raidStar(n,was){ if(n>was&&raid){ Snd.star(); const el=document.createElement('div'); el.className='bfl big'; el.style.cssText='left:50%;top:35%;font-size:64px;transform:translate(-50%,-50%)'; el.textContent='⭐'; $('#battleFx').appendChild(el); el.animate([{transform:'translate(-50%,-50%) scale(3)',opacity:0},{transform:'translate(-50%,-50%) scale(1)',opacity:1,offset:.3},{transform:'translate(120px,-320px) scale(.4)',opacity:.2}],{duration:1100,easing:'ease-out'}).onfinish=()=>el.remove(); renderRaidTop(); } }
+function raidDestroy(o){ if(o.t==='hq'&&raid) toast(raid.mode==='replay'?'🔥 They knocked out your HQ!':'🚒 HQ knocked out! ⭐','gold'); renderRaidTop(); }
+function raidOver(B){ if(!raid||raid.overShown) return; raid.overShown=true; setTimeout(()=>{ if(!raid) return; raid.mode==='replay'?replaySummary():showResults(); },1300); }
+function renderRaidTop(){ if(!raid) return; const B=raid.B, el=$('#raidHud .rtop'); if(!el) return; const o=raid.mode==='replay'?null:raid.opp||S.raidOpp||S.raid?.opp;
+  const stars=[0,1,2].map(i=>`<span class="s ${B.stars>i?'on':''}">⭐</span>`).join(''); const left=Math.max(0,B.timeLimit-B.t);
+  const lcard=raid.mode==='replay'?`<div class="rcard"><div class="rn">🔥 ${raid.entry.name} · replay</div><small>${new Date(raid.entry.at).toLocaleString('en-AU',{hour:'numeric',minute:'2-digit',day:'numeric',month:'short'})}</small><div class="rloot"><span>🪙 -${fmt(Math.floor(B.taken.coins))}</span><span>💧 -${fmt(Math.floor(B.taken.mats))}</span></div></div>`
+    :`<div class="rcard"><div class="rn">${o?o.name:'Rival'} <small style="display:inline">Lv ${o?.level||1}</small></div><small>${raid.mode==='scout'?'Available loot':'Loot taken'}</small><div class="rloot"><span>🪙 ${fmt(raid.mode==='scout'?B.loot.coins:Math.floor(B.taken.coins))}</span><span>💧 ${fmt(raid.mode==='scout'?B.loot.mats:Math.floor(B.taken.mats))}</span>${raid.mode==='scout'&&o?`<small>🏆 +${o.win} / -${o.lose}</small>`:''}</div></div>`;
+  const h=lcard+`<div class="rcard rtimer"><div class="rstars">${stars}</div><div class="rpct">${B.pct}% damage</div><b>${raid.mode==='scout'?'Scouting':fmtTime(left)}</b></div>`; if(el._h!==h){ el.innerHTML=h; el._h=h; } }
+function renderRaid(){ if(!raid) return; const B=raid.B; let bot='';
+  if(raid.mode==='scout') bot=`<div class="scout"><button class="gbtn red" data-act="raidhome">🏠 Home</button><button class="gbtn blue" data-act="raidnext">Next ${C(A.nextCost())}</button><button class="gbtn orange" data-act="raidgo">⚔️ Attack!</button></div>`;
+  else if(raid.mode==='fight'){ const abil=B.units.filter(u=>u.type==='hero'&&!u.dead&&!u.used).map(u=>{ const k=WD.heroFor(u.sp); return `<button class="abtn" data-act="ability" data-id="${u.id}">${WD.HEROES[k].icon}<small>${WD.HEROES[k].ability}</small></button>`; }).join('');
+    const cards=WD.TROOP_ORDER.filter(t=>(S.army.troops[t]||0)>0).map(t=>{ const n=B.deployLeft[t]||0; const s=raid.sel&&raid.sel.t===t; return `<button class="dcard ${s?'sel':''} ${n?'':'empty'}" data-act="dsel" data-id="${t}">${WD.TROOPS[t].icon}<span class="n">×${n}</span><span class="lv">Lv${B.research[t]||1}</span></button>`; }).join('')
+      + B.heroesLeft.map(h=>{ const s=raid.sel&&raid.sel.hero===h.id; return `<button class="dcard hero ${s?'sel':''}" data-act="dhero" data-id="${h.id}">${WD.HEROES[WD.heroFor(h.species)].icon}<small>${h.name.split(' ')[0]}</small></button>`; }).join('');
+    bot=`<div class="rbot"><div class="rbtns"><button class="gbtn red sm" data-act="raidend">End raid</button><div style="display:flex;gap:12px">${abil}</div></div><div class="dbar">${cards||'<span class="fine" style="color:#fff;padding:8px">All crews deployed</span>'}</div></div>`; }
+  else if(raid.mode==='replay') bot=`<div class="scout"><button class="gbtn blue" data-act="rspeed">⏩ ×${raid.view.speed}</button><button class="gbtn orange" data-act="rskip">Skip ⏭</button><button class="gbtn red" data-act="raidhome">✕ Close</button></div>`;
+  $('#raidHud').innerHTML=`<div class="rtop"></div>${bot}`; renderRaidTop(); }
+function showResults(){ const B=raid.B; const res=A.finishRaid(B); const ups=G.addStationXP(res.xp); const win=res.stars>0; win?Snd.victory():Snd.defeat();
+  const used=Object.entries(res.used).filter(([t,n])=>n>0).map(([t,n])=>`<span>${WD.TROOPS[t].icon}×${n}</span>`).join('')||'<span>none</span>';
+  $('#results').innerHTML=`<div class="resc ${win?'':'lose'}"><h2>${win?'Drill complete!':'Drill failed'}</h2><div class="bigstars"><span>⭐</span><span>⭐</span><span>⭐</span></div><div class="respct">${res.pct}% damage</div>
+    <div class="resrow"><span>🪙 +${fmt(res.loot.coins)}</span><span>💧 +${fmt(res.loot.mats)}</span><span class="tro">🏆 ${res.dT>=0?'+':''}${res.dT}</span></div>${res.wasted.coins+res.wasted.mats>0?`<div class="fine">Storage full: ${fmt(res.wasted.coins)} coins / ${res.wasted.mats} water left behind. Build more vaults and tanks.</div>`:''}
+    <div class="sect">Troops used</div><div class="resused">${used}</div><button class="gbtn green wide" data-act="raidhome">🏠 Return home</button></div>`; $('#results').classList.add('on');
+  [...$('#results').querySelectorAll('.bigstars span')].forEach((el,i)=>setTimeout(()=>{ el.classList.add(i<res.stars?'on':'off'); if(i<res.stars) Snd.star(); },500+i*550));
+  if(ups.length) setTimeout(()=>toast(`🏅 Station level ${S.level}!`,'gold'),2200); G.save(); }
+function raidHome(){ if(!raid) return; if(raid.mode==='scout'){ S.raidOpp=null; } if(raid.mode==='fight'&&!raid.B.over){ War.end(raid.B); return; }
+  raid.view.dispose(); scene.battle=null; restoreCam(raid.cam); document.body.classList.remove('raiding'); $('#raidHud').innerHTML=''; $('#results').classList.remove('on'); $('#battleFx').innerHTML=''; raid=null; Music.setTrack('base'); after(); }
+function openReplay(id){ const e=S.def.log.find(x=>x.id===id); if(!e) return; e.seen=true; closePanel(); closeSheet(); if(town.place) endPlace(); const B=A.replayBattle(e);
+  raid={ cam:saveCam(), mode:'replay', entry:e, B }; raid.view=new BattleView(scene,town,B,viewOpts({home:true,running:true,speed:2,quiet:true}));
+  scene.battle=raid.view; document.body.classList.add('raiding'); scene.pan.set(0,3); scene.zoom=.5; scene.updateCam(); renderRaid(); Snd.alarm(); }
+function replaySummary(){ const e=raid.entry; modal(`<h2>${e.stars?'🔥 Base raided':'🛡️ Defence held!'}</h2><div class="bigstars" style="font-size:40px">${[0,1,2].map(i=>`<span style="opacity:1;transform:none;${i<e.stars?'':'filter:grayscale(1);opacity:.3'}">⭐</span>`).join('')}</div>
+   <div class="stat"><span>Damage</span><b>${e.pct}%</b></div><div class="stat"><span>Lost</span><b>🪙 ${fmt(e.lost.coins)} · 💧 ${e.lost.mats}</b></div><div class="stat"><span>Trophies</span><b>${e.dT>0?'+':''}${e.dT}</b></div>${e.stars?`<div class="note">🛡️ You got a shield. Add more defences and walls to hold the next wave.</div>`:''}`,[{label:'Back to base',fn:()=>raidHome()}]); }
+function pAttack(){ const L=G.league(), lg=D.LEAGUES[L], nx=D.LEAGUES[L+1]; const newD=S.def.log.filter(x=>!x.seen).length;
+  let h=`<div class="lcard"><div class="lb">${LEAGUE_IC[L]||'🏆'}</div><div><b>${lg.name} League</b><small>🏆 ${S.trophies} trophies${nx?` · ${nx.min-S.trophies} to ${nx.name}`:''}</small><small>Raids ${S.raidStats.raids} · ⭐ ${S.raidStats.stars} · three-star ${S.raidStats.three}</small></div></div>`;
+  if(A.shieldLeft()) h+=`<div class="note">🛡️ Shield up for <b data-end="${S.def.shield}"></b>. Starting a raid drops it.</div>`;
+  const army=WD.TROOP_ORDER.filter(t=>S.army.troops[t]).map(t=>`<span class="chip">${WD.TROOPS[t].icon} ×${S.army.troops[t]}</span>`).join('')||'<span class="chip bad">No troops yet</span>';
+  const hs=A.heroes().map(c=>`<span class="chip ok">${WD.HEROES[WD.heroFor(c.species)].icon} ${c.name.split(' ')[0]}</span>`).join('');
+  h+=`<div class="sect">Your army · ${A.housed()}/${A.campCap()}</div><div class="chips">${army}${hs}</div><div class="row3"><button class="gbtn blue" data-act="openarmy">⛺ Train troops</button></div>
+   <div class="sect">Drill raid</div><p class="fine">A practice raid on a rival station. Knock out 50% for a star, their HQ for another and the lot for the third. Loot and trophies on the line.</p>
+   <button class="gbtn orange wide" data-act="findraid">⚔️ Find a base · ${C(A.nextCost())}</button>
+   <div class="row3"><button class="gbtn purple" data-act="deflog">🛡️ Defence log${newD?` (${newD} new)`:''}</button><button class="gbtn gold" data-act="opencup">🏆 Station Cup</button></div>`;
+  return ['⚔️ Attack',h]; }
+function pArmy(){ const tabs=[['train','⛺','Train'],['lab','🧪','Research'],['heroes','🦘','Heroes']].map(([k,i,n])=>`<button class="ctab ${k===armyTab?'on':''}" data-act="armytab" data-v="${k}">${i}<small>${n}</small></button>`).join('');
+  let h=`<div class="ctabs">${tabs}</div>`;
+  if(armyTab==='train'){ const cap=A.campCap(), used=A.housed()+A.queued();
+    if(!A.barracksL()) h+=`<div class="note">Build a ⛺ Crew Barracks (🔨 Build ▸ Army) to train troops.</div>`;
+    h+=`<div class="infobar">⛺ Barracks Lv ${A.barracksL()} · 💧 ${S.materials}/${A.waterCap()} water</div><div class="pbar big campbar"><i style="width:${cap?Math.min(100,used/cap*100):0}%"></i><span>Space ${used}/${cap}</span></div>`;
+    if(S.army.queue.length) h+=`<div class="qrow">${S.army.queue.slice(0,12).map((q,i)=>`<span class="qchip">${WD.TROOPS[q.t].icon}<button data-act="untrain" data-id="${i}">✕</button></span>`).join('')}${S.army.queue.length>12?`+${S.army.queue.length-12}`:''}<span class="fine">ready in <b data-end="${S.army.queue[S.army.queue.length-1].end}"></b></span><button class="gbtn purple sm" data-act="trainfin">Finish ${B(A.trainSpeedCost())}</button></div>`;
+    h+=`<div class="tgrid">${WD.TROOP_ORDER.map(t=>{ const d=WD.TROOPS[t], ok=A.unlocked(t), n=S.army.troops[t]||0; return `<button class="tcard ${ok?'':'lock'}" data-act="ttrain" data-id="${t}">${n?`<span class="tn">×${n}</span>`:''}<div class="ti">${d.icon}</div><b>${d.name}</b><small>${ok?`💧${d.cost} · ⏱${d.time}s · 🏠${d.house}`:`🔒 Barracks Lv ${d.unlock}`}</small><small>Lv ${S.army.research[t]} · ${d.desc}</small></button>`; }).join('')}</div>`; }
+  else if(armyTab==='lab'){ const L=A.labL(); if(!L) h+=`<div class="note">Build a 🧪 Research Lab (🔨 Build ▸ Army, station level 2) to research better troops.</div>`;
+    h+=`<div class="infobar">🧪 Lab Lv ${L} · troop levels up to ${WD.maxResearch(L)}</div>`;
+    if(S.army.lab){ const k=S.army.lab.t; h+=`<div class="ccard"><div class="cic">${WD.TROOPS[k].icon}</div><div class="cinfo"><div class="cname">${WD.TROOPS[k].name} → Lv ${S.army.research[k]+1}</div><div class="csub">done in <b data-end="${S.army.lab.end}"></b></div></div><button class="gbtn purple sm" data-act="labfin">${B(A.labSpeedCost())}</button></div>`; }
+    h+=`<div class="tgrid">${WD.TROOP_ORDER.map(t=>{ const d=WD.TROOPS[t], lv=S.army.research[t], [c,m]=WD.researchCost(t,lv); const ok=A.unlocked(t)&&lv<WD.maxResearch(L); return `<button class="tcard ${ok?'':'lock'}" data-act="research" data-id="${t}"><div class="ti">${d.icon}</div><b>${d.name}</b><small>Lv ${lv} → ${lv+1}</small><small>🪙${fmt(c)} 💧${m} ⏱${fmtTime(WD.researchTime(t,lv))}</small><small>+20% hp & spray</small></button>`; }).join('')}</div>`; }
+  else { const slots=A.heroSlots(), cur=A.heroes().map(c=>c.id); h+=`<div class="infobar">🦘 Hero slots ${cur.length}/${slots}${slots<2?` · more at station level ${slots?5:2}`:''}</div><p class="fine">Animal crew join raids as heroes. Each has one special move per raid.</p>`;
+    for(const c of S.crew){ const k=WD.heroFor(c.species), H=WD.HEROES[k], on=cur.includes(c.id); h+=`<div class="ccard ${on?'out':''}"><div class="cic">${H.icon}</div><div class="cinfo"><div class="cname">${c.name} · Lv ${c.lvl||1}</div><div class="csub"><b>${H.ability}</b>: ${H.desc}</div></div><button class="gbtn ${on?'green':'blue'} sm ${slots?'':'cant'}" data-act="herotog" data-id="${c.id}">${on?'✓ Hero':'Pick'}</button></div>`; }
+    h+=`<button class="gbtn blue wide" data-act="opencrew">👨‍🚒 Manage crew</button>`; }
+  return ['⛺ Army',h]; }
+function pDefLog(){ let h=`<div class="infobar">🛡️ Fire waves and firebug gangs hit your base while you're away. Defences and walls stop them.${A.shieldLeft()?` · Shield <b data-end="${S.def.shield}"></b>`:''}</div>`;
+  if(!S.def.log.length) h+=`<div class="empty">No raids yet. Build a 🔫 Hydrant Cannon and some 🧱 walls before the next wave.</div>`;
+  for(const e of S.def.log){ h+=`<div class="dlog ${e.seen?'':'new'}"><div class="ds">${[0,1,2].map(i=>i<e.stars?'⭐':'☆').join('')}</div><div class="dinfo"><b>${e.stars?'Raided':'Defended!'} · ${e.name}</b><br>${e.pct}% damage · 🪙-${fmt(e.lost.coins)} 💧-${e.lost.mats} · 🏆${e.dT>0?'+':''}${e.dT}<br><span class="fine">${fmtTime((Date.now()-e.at)/1000)} ago</span></div><button class="gbtn orange sm" data-act="replay" data-id="${e.id}">▶ Replay</button></div>`; }
+  return ['🛡️ Defence log',h]; }
+function handleV5(e){ if(e.trained){ trainedN++; if(Date.now()-trainedT>2500){ trainedT=Date.now(); setTimeout(()=>{ if(trainedN){ toast(`✅ ${trainedN>1?trainedN+' troops':WD.TROOPS[e.trained].name} ready`,'good'); Snd.train(); trainedN=0; } },300); } }
+  if(e.researched){ Snd.level(); toast(`🧪 ${WD.TROOPS[e.researched].name} is now level ${e.lv}!`,'gold'); }
+  if(e.raided){ Snd.alarm(); const en=S.def.log.find(x=>x.id===e.raided); toast(`🔥 A ${en?.name.toLowerCase()||'fire wave'} hit your base: ${en?.stars||0}⭐. Check ⚔️ ▸ Defence log`,'bad'); } }
+function raidFrame(){ if(raid){ renderRaidTop(); if(raid.mode==='fight'){ const k=raid.B.units.filter(u=>u.type==='hero'&&!u.dead&&!u.used).length+'|'+raid.B.units.filter(u=>u.type==='hero'&&u.dead).length; if(k!==raid.abk){ raid.abk=k; renderRaid(); } } } }
+window.FST.raid={ scout:p=>scout(p), go:()=>raidGo(), st:()=>raid, defendNow:k=>{ const e=A.defendRaid(k); after(); return e; }, replay:id=>openReplay(id), home:()=>raidHome(), War, WD, A };
+
 requestAnimationFrame(t=>{ last=t; frame(t); });

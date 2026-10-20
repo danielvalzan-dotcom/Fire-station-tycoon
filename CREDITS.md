@@ -10,3 +10,5 @@
 
 ## v4
 - Town buildings, roads and props are original procedural low-poly geometry made in code (no third-party models). Emoji icons are the device system font. No fire-service names, logos or badges.
+
+v5: all new building, troop, hero and effect art is procedural Three.js geometry made for this project. Sound effects are synthesised with Web Audio. No third-party game assets are used.

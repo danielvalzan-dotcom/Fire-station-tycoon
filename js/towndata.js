@@ -3,10 +3,10 @@ export const CELL = 2;            // world units per tile
 export const GRID = 28;           // tiles per side, centred on the station
 export const CHUNK = 4;           // land plots are 4x4 tiles
 export const NCH = Math.ceil(GRID/CHUNK);   // 7 x 7 plots
-export const START_PLOTS = ['5,4','6,4','6,5','4,5','4,6','5,6','5,5'];
+export const START_PLOTS = ['5,4','6,4','6,5','4,5','4,6','5,6','5,5','6,6','3,6'];
 
 export const CATS = [
-  ['home','🏠','Homes'], ['shop','🛍️','Shops'], ['prod','🏭','Production'], ['service','🏥','Services'],
+  ['def','🛡️','Defences'], ['army','⛺','Army'], ['res','💧','Resources'], ['home','🏠','Homes'], ['shop','🛍️','Shops'], ['prod','🏭','Production'], ['service','🏥','Services'],
   ['fire','🚒','Fire'], ['deco','🌳','Decor'], ['road','🛣️','Roads'], ['land','🗺️','Land'] ];
 
 // rate: coins or mats per hour at level 1 (grows x1.32 per level). cap: hours of storage.
@@ -22,8 +22,8 @@ export const TB = {
   surf:    { cat:'shop', name:'Surf Shack', icon:'🏄', w:1,h:1, max:8, unlock:3, cost:[600,2], g:1.55, t0:30, tg:1.75, rate:100, res:'coins', cap:4, shop:1, count:L=>1, sign:'SURF', desc:'Boards, wax and boardies.' },
   servo:   { cat:'shop', name:'Servo', icon:'⛽', w:2,h:1, max:9, unlock:2, cost:[700,3], g:1.55, t0:40, tg:1.75, rate:120, res:'coins', cap:4, shop:1, count:L=>1, sign:'SERVO', desc:'Fuel, pies and ice. Car fires love it.' },
   pub:     { cat:'shop', name:'Royal Wombat Hotel', icon:'🍺', w:2,h:2, max:10, unlock:4, cost:[1500,6], g:1.5, t0:90, tg:1.7, rate:190, res:'coins', cap:4, shop:1, happy:2, count:L=>1, sign:'HOTEL', desc:'Two-storey corner pub with a wrap-around verandah.' },
-  timber:  { cat:'prod', name:'Timber Yard', icon:'🪵', w:2,h:2, max:10, unlock:1, cost:[400,0], g:1.5, t0:30, tg:1.7, rate:4, res:'mats', cap:4, count:L=>1+Math.floor(L/4), desc:'Makes 🧱 materials for repairs and rebuilds.' },
-  quarry:  { cat:'prod', name:'Quarry', icon:'⛏️', w:2,h:2, max:10, unlock:3, cost:[1100,0], g:1.5, t0:60, tg:1.7, rate:6, res:'mats', cap:4, count:L=>1, desc:'Rock and gravel. Lots of 🧱 materials.' },
+  timber:  { cat:'prod', name:'Timber Yard', icon:'🪵', w:2,h:2, max:10, unlock:1, cost:[400,0], g:1.5, t0:30, tg:1.7, rate:4, res:'mats', cap:4, count:L=>1+Math.floor(L/4), desc:'Makes 💧 materials for repairs and rebuilds.' },
+  quarry:  { cat:'prod', name:'Quarry', icon:'⛏️', w:2,h:2, max:10, unlock:3, cost:[1100,0], g:1.5, t0:60, tg:1.7, rate:6, res:'mats', cap:4, count:L=>1, desc:'Rock and gravel. Lots of 💧 materials.' },
   farm:    { cat:'prod', name:'Cane Farm', icon:'🌾', w:3,h:2, max:8, unlock:2, cost:[650,0], g:1.5, t0:45, tg:1.7, rate:90, res:'coins', cap:5, happy:1, count:L=>1+Math.floor(L/5), desc:'Sugar cane and a windmill. Grass fires happen here.' },
   hospital:{ cat:'service', name:'District Hospital', icon:'🏥', w:2,h:2, max:8, unlock:4, cost:[2200,8], g:1.5, t0:120, tg:1.7, fx:{happy:4,dmg:.05,stable:.08}, count:L=>1, desc:'Happier town, fewer disaster losses, steadier patients.' },
   police:  { cat:'service', name:'Police Station', icon:'🚓', w:2,h:2, max:8, unlock:2, cost:[900,3], g:1.5, t0:60, tg:1.7, fx:{happy:3,dmg:.03}, count:L=>1, sign:'POLICE', desc:'Keeps traffic moving and the town calm.' },
@@ -44,6 +44,20 @@ export const TB = {
   gum:     { cat:'deco', name:'Gum Tree', icon:'🌳', w:1,h:1, max:1, unlock:1, cost:[30,0], g:1, t0:0, tg:1, fx:{happy:.25}, count:L=>20+L*4, instant:true, desc:'Ghost gum. Koalas approve.' },
   lamp:    { cat:'deco', name:'Street Lamp', icon:'💡', w:1,h:1, max:1, unlock:1, cost:[20,0], g:1, t0:0, tg:1, fx:{happy:.1}, count:L=>20+L*4, instant:true, desc:'Lights up at night.' },
   hut:     { cat:'deco', name:'Builder Hut', icon:'👷', w:1,h:1, max:1, unlock:1, cost:[0,0], badges:[0,60,120,250,500], g:1, t0:0, tg:1, count:L=>5, instant:true, desc:'Each extra hut adds a builder so you can upgrade more at once.' },
+  // ---- v5: Clash-style base pieces ----
+  pump:    { cat:'res', name:'Hydrant Pump', icon:'🚰', w:2,h:2, max:10, unlock:1, cost:[200,0], g:1.5, t0:20, tg:1.7, rate:10, res:'mats', cap:4, count:L=>1+Math.floor(L/2), desc:'Pumps 💧 water for training crews and repairs.' },
+  mint:    { cat:'res', name:'Coin Press', icon:'🪙', w:2,h:2, max:10, unlock:1, cost:[0,6], g:1.5, t0:20, tg:1.7, rate:120, res:'coins', cap:4, count:L=>1+Math.floor(L/2), desc:'Stamps out coins all day.' },
+  vault:   { cat:'res', name:'Coin Vault', icon:'🏦', w:2,h:2, max:10, unlock:1, cost:[300,0], g:1.55, t0:25, tg:1.7, store:{coins:1500}, count:L=>1+Math.floor(L/3), desc:'Raises your coin limit. Raiders go for it.' },
+  tank:    { cat:'res', name:'Water Tank', icon:'🛢️', w:2,h:2, max:10, unlock:1, cost:[350,0], g:1.55, t0:25, tg:1.7, store:{mats:80}, count:L=>1+Math.floor(L/3), desc:'Raises your 💧 water limit.' },
+  cannon:  { cat:'def', name:'Hydrant Cannon', icon:'🔫', w:2,h:2, max:10, unlock:1, cost:[250,0], g:1.55, t0:20, tg:1.7, count:L=>1+Math.ceil(L/2), desc:'Hard-hitting water jet. Ground targets only.' },
+  sprinkler:{cat:'def', name:'Sprinkler Tower', icon:'🌧️', w:2,h:2, max:10, unlock:2, cost:[500,2], g:1.55, t0:30, tg:1.7, count:L=>Math.ceil(L/2), desc:'Fast spray that hits ground and air.' },
+  mortar:  { cat:'def', name:'Foam Mortar', icon:'🫧', w:2,h:2, max:8, unlock:3, cost:[900,4], g:1.55, t0:45, tg:1.7, count:L=>Math.max(0,Math.floor((L-1)/2)), desc:'Lobs foam bombs that splash crowds. Cannot hit close up.' },
+  bomber:  { cat:'def', name:'Bomber Pad', icon:'🛩️', w:2,h:2, max:8, unlock:4, cost:[1400,6], g:1.55, t0:60, tg:1.7, count:L=>Math.max(0,Math.floor((L-2)/2)), desc:'Water-bomber drones that knock flyers out of the sky.' },
+  wall:    { cat:'def', name:'Firebreak Wall', icon:'🧱', w:1,h:1, max:8, unlock:1, cost:[40,0], g:1.9, t0:0, tg:1, count:L=>25+L*15, instant:true, run:true, desc:'Place in runs. Ground crews must cut through.' },
+  trap:    { cat:'def', name:'Alarm Trap', icon:'⚠️', w:1,h:1, max:5, unlock:2, cost:[120,0], g:1.7, t0:0, tg:1, count:L=>L, instant:true, desc:'Hidden. Bursts when ground troops step on it.' },
+  barracks:{ cat:'army', name:'Crew Barracks', icon:'⛺', w:2,h:2, max:8, unlock:1, cost:[200,0], g:1.6, t0:20, tg:1.75, count:L=>1, desc:'Trains drill crews. Each level unlocks a troop and adds space.' },
+  lab:     { cat:'army', name:'Research Lab', icon:'🧪', w:2,h:2, max:8, unlock:2, cost:[700,4], g:1.6, t0:40, tg:1.75, count:L=>1, desc:'Research better troops.' },
+  hq:      { cat:'hidden', name:'Station HQ', icon:'🚒', w:4,h:4, max:10, unlock:99, cost:[0,0], g:1, t0:0, tg:1, count:L=>0, desc:'Rival HQ.' },
   road:    { cat:'road', name:'Road', icon:'🛣️', w:1,h:1, max:1, unlock:1, cost:[10,0], g:1, t0:0, tg:1, count:L=>200, instant:true, desc:'Cars and walkers use roads. Drag the ghost to place.' },
 };
 export const TB_ORDER = Object.keys(TB);
