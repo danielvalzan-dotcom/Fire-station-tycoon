@@ -63,3 +63,10 @@ The shop and the "ad" are DEMO ONLY. Nothing is sold, no ad network is loaded, a
 - Idle squash-and-stretch on buildings, a wobble on collect, and a pop-in when a building is placed.
 - Brighter grass with painted tufts, rounded road tiles, round blobby trees.
 - Gameplay and saves are unchanged. The v5 build is kept in v5/.
+
+## v5.2: station progression and fair battles
+- **Station level gates everything.** Buildings, defences, troops, per-building counts and max levels (station level + 1) all unlock with station level. Tap the station shield (top-left) or the Build-panel banner to see the full unlock table. Upgrading the station needs listed prerequisites, full Station XP, coins and water, and takes time; you can speed it up with badges. Locked shop cards read "Unlocks at Station Lv X", and each level-up shows a confetti popup listing what's new.
+- **First-session tutorial** (5 goals with rewards): collect from the Coin Press, raise the cannon to Lv2, train 5 hose crews, win a raid, then reach Station Lv2.
+- **Fair matchmaking** (js/progress.js): a duel model compares your army's attack power (⚔️) with a base's defence score (🛡️). It searches generated bases at your station level ±1, with difficulty tunes from −4 to +4, for a ratio in the band 0.8–1.6. Trophy gains and losses scale with the mismatch. The scout card shows the rival's Station Lv, trophies and a Fair/Easy/Tough label, and "Next" is free.
+- **Save migration:** v5.1 saves keep every building. Levels above the new cap are lowered, over-cap upgrades are refunded and locked troops are refunded, and a one-off note explains the changes. Veterans skip the tutorial.
+- Tests: `node mm-check.mjs` checks fairness; `t10.mjs` runs a fresh-save playthrough and `t10m.mjs` a migration check (screens in screens-v52/).

@@ -9,19 +9,21 @@ const isDef = t => W.DEF_TYPES.includes(t);
 
 /* ---------- layouts ---------- */
 // a rival base for a drill raid, generated from a seed and an HQ level
-export function genBase(level, seed, name){ const L=Math.max(1,Math.min(10,level|0)), r=rng(seed); const items=[]; const occ=new Set();
+export function genBase(level, seed, name, tune=0){ const L=Math.max(1,Math.min(10,level|0)), r=rng(seed); const items=[]; const occ=new Set();
   const free=(i,j,w,h,pad=0)=>{ for(let a=-pad;a<w+pad;a++) for(let b=-pad;b<h+pad;b++){ const ci=i+a,cj=j+b; if(ci<1||cj<1||ci>=N-1||cj>=N-1) return false; if(occ.has(ci+','+cj)) return false; } return true; };
   const put=(t,i,j,lv)=>{ const d=TB[t]; for(let a=0;a<d.w;a++) for(let b=0;b<d.h;b++) occ.add((i+a)+','+(j+b)); items.push({t,i,j,lv:Math.max(1,Math.min(TB[t].max,lv))}); return true; };
-  const lvl=()=>Math.max(1,L-(r()<.5?1:0)-(r()<.25?1:0));
+  const lvl=()=>Math.max(1,Math.min(L+1,L-(r()<.5?1:0)-(r()<.25?1:0)+tune)); // tune -1/0/+1 nudges difficulty within a level (matchmaking)
   const c=12; put('hq',c,c,L);
   // inner ring of 2x2s around the HQ
   const inner=[[c-2,c-2],[c+4,c-2],[c-2,c+4],[c+4,c+4],[c+1,c-2],[c+1,c+4],[c-2,c+1],[c+4,c+1]];
   const defs=['cannon']; for(let k=1;k<1+Math.ceil(L/2);k++) defs.push('cannon'); for(let k=0;k<Math.ceil(L/2);k++) defs.push('sprinkler'); for(let k=0;k<Math.max(0,Math.floor((L-1)/2));k++) defs.push('mortar'); for(let k=0;k<Math.max(0,Math.floor((L-2)/2));k++) defs.push('bomber');
+  if(tune<=-3) defs.splice(1,Math.min(defs.length-1,-tune-2+Math.floor(defs.length/3))); // matchmaking: a thinner base for a small army
+  if(tune>=3) for(let k=0;k<tune-2;k++) defs.push(L>=4?'bomber':'sprinkler','sprinkler'); // matchmaking: more anti-air for a big army
   const stores=['vault','tank']; if(L>=3) stores.push('vault','tank');
   const innerWant=[...stores.slice(0,2),...defs.slice(0,Math.min(defs.length,L>=3?4:2))]; let pool=[...inner].sort(()=>r()-.5);
   for(const t of innerWant){ const s=pool.find(([i,j])=>free(i,j,2,2)); if(!s) break; put(t,s[0],s[1],lvl()); pool=pool.filter(x=>x!==s); }
   // walls: a ring around the core (and an outer ring from level 4)
-  const wl=Math.max(1,Math.ceil(L*.7)); const ring=(a,b)=>{ for(let i=a;i<=b;i++) for(const j of [a,b]){ if(free(i,j,1,1)) put('wall',i,j,wl); if(free(j,i,1,1)) put('wall',j,i,wl); } };
+  const wl=Math.max(1,Math.min(L+1,Math.ceil(L*.7)+tune)); const ring=(a,b)=>{ for(let i=a;i<=b;i++) for(const j of [a,b]){ if(free(i,j,1,1)) put('wall',i,j,wl); if(free(j,i,1,1)) put('wall',j,i,wl); } };
   ring(c-3,c+6); if(L>=4) ring(c-7,c+10);
   // everything else scattered outside, keeping a 1-tile gap
   const rest=[...defs.slice(innerWant.length-2>0?Math.min(defs.length,L>=3?4:2):Math.min(defs.length,L>=3?4:2)),...stores.slice(2),'barracks','pump','pump','mint','mint',...(L>=3?['pump','mint','lab']:[]),'house','house','house',...(L>=5?['units','units']:[])];

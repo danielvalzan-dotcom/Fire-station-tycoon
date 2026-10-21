@@ -309,6 +309,24 @@ body.raiding #hudTop,body.raiding #hudMid,body.raiding #hudBot,body.raiding #que
 .lcard{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#3d2a6b,#1e1440);color:#fff;border-radius:18px;padding:12px;border:3px solid #2b1a0e;margin-bottom:10px}.lcard .lb{font-size:44px}.lcard b{font-family:var(--f);font-size:22px}.lcard small{display:block;opacity:.85}
 .dlog{display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #2b1a0e;border-radius:14px;padding:8px;margin-bottom:8px}.dlog .ds{font-size:18px;white-space:nowrap}.dlog .dinfo{flex:1;font-size:13px}.dlog .dinfo b{font-family:var(--f);font-size:15px}.dlog.new{border-color:#ff7a1a;box-shadow:0 0 0 2px #ffcf33}
 .scout{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 110px);display:flex;gap:10px;pointer-events:auto}
+
+/* v5.2 progression + matchmaking */
+.stbar{display:block;width:100%;margin:6px 0;padding:9px 12px;border:3px solid #1e130c;border-radius:14px;background:linear-gradient(#ffd54f,#ffb300);font:16px 'Lilita One',sans-serif;color:#3a2200;text-align:left}
+.sthead{display:flex;gap:12px;align-items:center;margin-bottom:6px}.sthead small{display:block;opacity:.8;font-size:12px}
+.stbig{width:58px;height:58px;flex:none;border-radius:16px;border:3px solid #1e130c;background:linear-gradient(#ff7043,#e8281e);color:#fff;font:32px 'Lilita One',sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 0 #1e130c}
+.req{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px;padding:7px 10px;margin:4px 0;border-radius:10px;background:rgba(0,0,0,.06)}.req.ok{background:rgba(67,196,67,.18)}.req small{opacity:.75;font-size:11px;width:100%}
+.uchips{display:flex;flex-wrap:wrap;gap:5px}.uchip{padding:4px 8px;border-radius:10px;border:2px solid #1e130c;background:#fff;font-size:12px;font-weight:700}
+.uchip.troop{background:#ffe0b2}.uchip.hero{background:#e1bee7}.uchip.cap{background:#fff59d}.uchip.count{background:#e3f2fd;opacity:.85}
+.uchips.big .uchip{font-size:14px;padding:6px 10px}
+.utable .urow{display:flex;gap:8px;align-items:flex-start;padding:6px;border-radius:10px;margin:3px 0;opacity:.55}.utable .urow b{flex:none;width:40px}
+.utable .urow.have{opacity:1}.utable .urow.next{opacity:1;background:rgba(255,193,7,.25);outline:2px dashed #ff8f00}
+.lvlup{text-align:center}.lvburst{font-size:64px;animation:lvpop .8s cubic-bezier(.2,1.6,.4,1)}@keyframes lvpop{0%{transform:scale(0) rotate(-90deg)}100%{transform:scale(1)}}
+.lvlmodal .uchips{justify-content:center}
+.conf{position:fixed;top:-12px;width:10px;height:16px;border-radius:3px;z-index:9999;pointer-events:none;animation:conf 2.4s ease-in forwards}@keyframes conf{to{transform:translateY(105vh) rotate(720deg)}}
+.mm{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px;font-size:12px}.mm small{width:100%;opacity:.8}
+.mml{padding:1px 7px;border-radius:8px;border:2px solid #1e130c;font-weight:700}.mml.fair{background:#9be37a}.mml.easy{background:#90caf9}.mml.tough{background:#ffab91}
+#quest .qh{display:block;opacity:.75;font-size:11px}#quest .qt small:first-child{color:#ffd54f;margin-right:4px}
+.player{cursor:pointer}
 </style>
 </head>
 <body>

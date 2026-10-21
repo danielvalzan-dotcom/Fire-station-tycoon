@@ -2,6 +2,7 @@
 import * as D from './data.js';
 import * as T from './town.js';
 import * as A from './army.js';
+import * as P from './progress.js';
 export { A };
 import { TB, ZONE_CATS as TD_ZONE } from './towndata.js';
 const TDB=t=>TB[t];
@@ -21,7 +22,7 @@ export function newState(){
     sizzle:{stored:0,last:now()}, trophies:0, comp:{played:0,wins:0,best:{}}, crates:0,
     quests:{idx:0, claimed:[]}, rush:{active:false,next:now()+5*60e3,until:0,ids:[],done:0},
     stats:{calls:0,success:0,fail:0,earned:0,hazmat:0,gearUps:0},
-    prefs:{sfx:true,music:true}, xmas:false, tut:0, firstCallsDone:0, migratedFrom:null,
+    prefs:{sfx:true,music:true}, xmas:false, tut:0, tg:{i:0,done:false}, p52:1, stUp:null, firstCallsDone:0, migratedFrom:null,
     materials:10, town:{happy:75, rep:0, damaged:{}}, played:{}, stars:{}, dis:{next:now()+6*60e3, active:null, count:0, seen:{}} };
   S=s; const sp=['roo','wombat','koala','platypus']; ['officer','ff','ff','driver'].forEach((r,i)=>s.crew.push(makeCrew(r,sp[i]))); return s; }
 
@@ -43,7 +44,7 @@ export function load(){
       migrated={ coins:Math.min(6000,Math.round(250+Math.sqrt(Math.max(0,earned))*25)), badges:Math.min(150,25+(old.stations||1)*10+(old.stats?.rushWins||0)*5), fromLevel:old.level||1 };
       S.coins+=migrated.coins; S.badges+=migrated.badges; S.migratedFrom='v1'; S.prefs.sfx=old.sfx!==false; S.prefs.music=old.music!==false; } }catch(e){}
   save(); return {fresh:true, migrated}; }
-function repair(){ const def=defaults();
+function repair(){ const pre52=S.p52===undefined; const def=defaults();
   for(const k of Object.keys(def)) if(S[k]===undefined) S[k]=def[k];
   for(const id of D.BUILD_ORDER) if(!S.buildings[id]) S.buildings[id]={l:0};
   S.crew.forEach((c,i)=>{ c.gear=Object.assign({helmet:0,coat:0,boots:0,ba:0},c.gear); for(const [k] of D.ROLES[c.role].skills) if(!c.sk[k]) c.sk[k]=1;
@@ -52,6 +53,8 @@ function repair(){ const def=defaults();
   // an action scene that was open when the app closed resolves on the timer instead
   S.calls.forEach(c=>{ if(c.state==='out'&&c.action){ c.action=false; c.end=now()+5000; } });
   T.ensureTown(); A.ensureArmy(); T.starterV5();
+  if(pre52){ // v5.2: keep what an old save built, cap anything above its station level; veterans skip the tutorial
+    const c=P.capSave(S,stationXpNeed(S.level)); const vet=S.level>=2||(S.stats.tcollect||0)>0||(S.raidStats?.raids||0)>0; S.tg={i:0,done:vet}; S.p52=1; S.capNote={...c,vet,level:S.level}; }
   // anything that was mid-flight when the app closed is resolved by tick()
 }
 function defaults(){ const keep=S; const d=newState(); S=keep; delete d.tw; return d; }
@@ -60,7 +63,8 @@ export function resetAll(){ try{ localStorage.removeItem(KEY); }catch(e){} newSt
 
 /* ---------- station level ---------- */
 export const stationXpNeed = L => Math.round(40*Math.pow(1.45,L-1));
-export function addStationXP(n){ S.xp+=n; const ups=[]; while(S.xp>=stationXpNeed(S.level)){ S.xp-=stationXpNeed(S.level); S.level++; S.badges+=5; ups.push(S.level); } return ups; }
+// v5.2: XP no longer levels the station by itself. A full XP bar is one prerequisite of the Station upgrade (see progress.js).
+export function addStationXP(n){ S.xp=Math.min((S.xp||0)+n, stationXpNeed(S.level)); return []; }
 export const happyNow = () => Math.max(0,Math.min(100,(S.town?.happy??75)+(S.tw?T.fx().happy:0)));
 export const payMult = () => (1 + 0.05*(S.level-1)) * (0.9 + 0.2*happyNow()/100);
 
@@ -310,7 +314,7 @@ function disasterTick(events){ const t=now(), a=S.dis.active;
   if(a.phase!=='rebuild') S.nextCallAt=Math.max(S.nextCallAt,t+20000);   // the pager goes quiet during a disaster
 }
 /* ---------- main tick: call every frame or so; returns events for the UI ---------- */
-export function tick(){ const events=[]; sizzleTick(); T.townTick(events); A.armyTick(events);
+export function tick(){ const events=[]; sizzleTick(); T.townTick(events); A.armyTick(events); P.stationTick(S,events);
   const built=finishBuildings(); built.forEach(id=>events.push({built:id}));
   resolveCalls().forEach(r=>events.push({result:r}));
   if(now()>=S.nextCallAt){ const first=S.firstCallsDone===0&&!S.calls.some(c=>c.type==='bin');

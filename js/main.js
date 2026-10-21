@@ -14,6 +14,7 @@ import * as TD from './towndata.js';
 import { BattleView } from './battle3d.js';
 import * as War from './war.js';
 import * as WD from './wardata.js';
+import * as P from './progress.js';
 const T=G.T;
 const A=G.A; let armyTab='train'; let raid=null; let trainedN=0, trainedT=0;
 const $=s=>document.querySelector(s), fmt=D.fmt, fmtTime=D.fmtTime;
@@ -112,7 +113,7 @@ function renderTownSheet(){ const i=T.info(sheetTown); if(!i){ closeSheet(); ret
 /* ---------- v4: build menu ---------- */
 let buildCat='home';
 function pBuild(){ const cats=TD.CATS.map(([k,ic,n])=>`<button class="ctab ${k===buildCat?'on':''}" data-act="bcat" data-v="${k}">${ic}<small>${n}</small></button>`).join('');
-  let h=`<div class="ctabs">${cats}</div><div class="infobar">👷 Builders ${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()} free · 💧 ${S.materials} · 👥 ${T.population()} residents · <button class="gbtn orange sm" data-act="collectall">Collect all</button></div>`;
+  let h=`<div class="ctabs">${cats}</div><button class="stbar" data-act="openstation">🚒 Station Lv <b>${S.level}</b> ${S.stUp?'· upgrading':P.stationStatus(S,G.stationXpNeed(S.level)).ok?'· ⬆️ ready to upgrade!':'· see what unlocks next ›'}</button><div class="infobar">👷 Builders ${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()} free · 💧 ${S.materials} · 👥 ${T.population()} residents · <button class="gbtn orange sm" data-act="collectall">Collect all</button></div>`;
   if(buildCat==='land'){ const pi=T.plotInfo(); h+=`<div class="ccard"><div class="cic">🗺️</div><div class="cinfo"><div class="cname">Expand your land</div><div class="csub">You own ${S.tw.plots.length} plots (max ${TD.plotsAllowed(S.level)} at station level ${S.level}). Next plot ${C(pi.cost)}${pi.mats?` 💧${pi.mats}`:''}</div></div><button class="gbtn green sm" data-act="expand">Choose plot</button></div>`; return ['🔨 Build',h]; }
   h+='<div class="bgrid">'; for(const t of TD.TB_ORDER){ const d=TD.TB[t]; if(d.cat!==buildCat) continue; const bi=T.buildInfo(t); const cost=bi.badges?B(bi.badges):(bi.cost[0]?C(bi.cost[0]):'Free')+(bi.cost[1]?` 💧${bi.cost[1]}`:'');
     h+=`<button class="bcard ${bi.why?'lock':''}" data-act="bplace" data-id="${t}"><div class="bic">${d.icon}</div><b>${d.name}</b><small class="bsz">${d.w}×${d.h}${d.max>1?` · ${d.max} levels`:''}</small><small class="bfx">${fxLine(d,1)}</small><div class="bcost">${bi.why?`🔒 ${bi.why}`:cost}</div><span class="bcnt">${bi.n}/${bi.max}</span></button>`; }
@@ -132,8 +133,11 @@ function hud(){
     const sh=A.shieldLeft(); const sp=$('#shieldp'); sp.style.display=sh?'':'none'; if(sh) sp.innerHTML=`🛡️ <b>${fmtTime(sh/1000)}</b>`;
     const nd=S.def.log.filter(x=>!x.seen).length; $('#defNew').style.display=nd?'':'none'; const q=S.army.queue.length; const ac=$('#armyCnt'); ac.style.display=q?'':'none'; ac.textContent=q; }
   disBanner();
-  const q=G.currentQuest(); const qe=$('#quest');
-  if(q){ const done=q.done(); const h=`<span class="qi">🎯</span><span class="qt">${q.text}</span>${done?`<button class="gbtn green sm" data-act="claim">Claim ${ICON.badge}${q.reward}</button>`:`<span class="qr">${ICON.badge}${q.reward}</span>`}`;
+  const ts=P.tutStep(S); const q=ts?null:G.currentQuest(); const qe=$('#quest');
+  if(ts){ const done=ts.done(S); const rw=[ts.reward.coins?`${ICON.coin}${ts.reward.coins}`:'',ts.reward.badges?`${ICON.badge}${ts.reward.badges}`:'',ts.reward.mats?`💧${ts.reward.mats}`:''].join(' ');
+    const h=`<span class="qi">🎓</span><span class="qt"><small>Tutorial ${S.tg.i+1}/${P.TUTORIAL.length}</small> ${ts.text}${done?'':`<small class="qh">${ts.hint}</small>`}</span>${done?`<button class="gbtn green sm" data-act="tutclaim">Claim ${rw}</button>`:`<span class="qr">${rw}</span>`}`;
+    if(qe._h!==h){ qe.innerHTML=h; qe._h=h; } qe.classList.toggle('ready',done); qe.style.display=''; }
+  else if(q){ const done=q.done(); const h=`<span class="qi">🎯</span><span class="qt">${q.text}</span>${done?`<button class="gbtn green sm" data-act="claim">Claim ${ICON.badge}${q.reward}</button>`:`<span class="qr">${ICON.badge}${q.reward}</span>`}`;
     if(qe._h!==h){ qe.innerHTML=h; qe._h=h; } qe.classList.toggle('ready',done); qe.style.display=''; } else qe.style.display='none';
   const r=S.rush, re=$('#rush'); if(r.active){ re.style.display=''; re.innerHTML=`🚨 RUSH HOUR <b>${r.done}/3</b> · <span data-end="${r.until}"></span> · 2x pay`; } else re.style.display='none';
   for(const id of D.BUILD_ORDER) renderLabel(id);
@@ -182,7 +186,7 @@ function openPanel(v,arg){ const was=view; view=v; viewArg=arg; if(v!=='dispatch
   Music.setTrack(v==='compete'?'comp':'base'); }
 function closePanel(){ view=null; $('#panel').classList.remove('on'); Music.setTrack('base'); }
 function renderPanel(reset){ if(!view) return; const body=$('#panel .pbody'), st=reset?0:body.scrollTop; const title=$('#panel .ptitle');
-  const R={build:pBuild,calls:pCalls,dispatch:pDispatch,crew:pCrew,crewDetail:pCrewDetail,compete:pCompete,leader:pLeader,shop:pShop,settings:pSettings,disaster:pDisaster,zone:pZone,attack:pAttack,army:pArmy,deflog:pDefLog}[view];
+  const R={build:pBuild,calls:pCalls,dispatch:pDispatch,crew:pCrew,crewDetail:pCrewDetail,compete:pCompete,leader:pLeader,shop:pShop,settings:pSettings,disaster:pDisaster,zone:pZone,attack:pAttack,army:pArmy,deflog:pDefLog,station:pStation}[view];
   const [t,h]=R(viewArg); title.innerHTML=t; body.innerHTML=h; body.scrollTop=st; liveTimers(body); }
 function pCalls(){ const open=S.calls.filter(c=>c.state==='open'), out=S.calls.filter(c=>c.state==='out');
   let h=`<div class="infobar">🚒 Free trucks <b>${G.freeAppliances()}/${D.appliances(G.bl('engine'))}</b> · 💺 ${D.seats(G.bl('engine'))} seats each · 👥 ${S.crew.filter(c=>!c.busy).length} crew free</div>`;
@@ -326,6 +330,10 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('[data-act
   case 'train': { const m=S.crew.find(c=>c.id===id); const [er,ups]=G.train(m); if(err(er)) break; Snd.skill(); if(ups.length){ Snd.level(); toast(`⭐ ${m.name} reached Lv ${m.lvl}! +1 skill point`,'gold'); } else toast(`🏋️ ${m.name} smashed the drill (+XP)`,'good'); after(); break; }
   case 'skill': { const m=S.crew.find(c=>c.id===id); if(err(G.upSkill(m,b.dataset.k))) break; Snd.skill(); after(); break; }
   case 'gear': { const m=S.crew.find(c=>c.id===id); if(err(G.upGear(m,b.dataset.k))) break; Snd.equip(); const t=m.gear[b.dataset.k]; toast(`${D.RARITY[t].name} gear fitted to ${m.name}!`, t>=3?'gold':'good'); if(t>=3) Snd.buildDone(); after(); break; }
+  case 'tutclaim': { const r=P.tutClaim(S); if(r){ Snd.collect(); toast(`🎓 Goal done! ${r.coins?'+'+r.coins+' coins ':''}${r.badges?'+'+r.badges+' badges ':''}${r.mats?'+'+r.mats+' 💧':''}`,'gold'); after(); } break; }
+  case 'openstation': openPanel('station'); break;
+  case 'stup': { if(err(P.startStationUp(S,G.stationXpNeed(S.level)))) break; Snd.thud(); toast(`🚒 Station upgrade started`,'' ); after(); break; }
+  case 'stspeed': { if(err(P.speedStation(S))) break; Snd.collect(); handle(G.tick()); after(); break; }
   case 'claim': { const n=G.claimQuest(); if(n){ Snd.collect(); toast(`🎯 Goal complete! +${n} badges`,'gold'); after(); } break; }
   case 'comp': startComp(D.COMPS.find(c=>c.id===id)); break;
   case 'visit': visitBase(id); break;
@@ -500,10 +508,10 @@ function raidOver(B){ if(!raid||raid.overShown) return; raid.overShown=true; set
 function renderRaidTop(){ if(!raid) return; const B=raid.B, el=$('#raidHud .rtop'); if(!el) return; const o=raid.mode==='replay'?null:raid.opp||S.raidOpp||S.raid?.opp;
   const stars=[0,1,2].map(i=>`<span class="s ${B.stars>i?'on':''}">⭐</span>`).join(''); const left=Math.max(0,B.timeLimit-B.t);
   const lcard=raid.mode==='replay'?`<div class="rcard"><div class="rn">🔥 ${raid.entry.name} · replay</div><small>${new Date(raid.entry.at).toLocaleString('en-AU',{hour:'numeric',minute:'2-digit',day:'numeric',month:'short'})}</small><div class="rloot"><span>🪙 -${fmt(Math.floor(B.taken.coins))}</span><span>💧 -${fmt(Math.floor(B.taken.mats))}</span></div></div>`
-    :`<div class="rcard"><div class="rn">${o?o.name:'Rival'} <small style="display:inline">Lv ${o?.level||1}</small></div><small>${raid.mode==='scout'?'Available loot':'Loot taken'}</small><div class="rloot"><span>🪙 ${fmt(raid.mode==='scout'?B.loot.coins:Math.floor(B.taken.coins))}</span><span>💧 ${fmt(raid.mode==='scout'?B.loot.mats:Math.floor(B.taken.mats))}</span>${raid.mode==='scout'&&o?`<small>🏆 +${o.win} / -${o.lose}</small>`:''}</div></div>`;
+    :`<div class="rcard"><div class="rn">${o?o.name:'Rival'} <small style="display:inline">Lv ${o?.level||1}</small></div><small>${raid.mode==='scout'?'Available loot':'Loot taken'}</small><div class="rloot"><span>🪙 ${fmt(raid.mode==='scout'?B.loot.coins:Math.floor(B.taken.coins))}</span><span>💧 ${fmt(raid.mode==='scout'?B.loot.mats:Math.floor(B.taken.mats))}</span>${raid.mode==='scout'&&o?`<small>🏆 +${o.win} / -${o.lose}</small>`:''}</div>${raid.mode==='scout'&&o?`<div class="mm"><span>🚒 Station Lv <b>${o.level}</b></span><span>🏆 <b>${o.trophies??'?'}</b></span>${o.label?`<span class="mml ${o.label.toLowerCase()}">${o.label} match</span>`:''}${o.ap?`<small>⚔️ ${o.ap} vs 🛡️ ${o.ds}</small>`:''}</div>`:''}</div>`;
   const h=lcard+`<div class="rcard rtimer"><div class="rstars">${stars}</div><div class="rpct">${B.pct}% damage</div><b>${raid.mode==='scout'?'Scouting':fmtTime(left)}</b></div>`; if(el._h!==h){ el.innerHTML=h; el._h=h; } }
 function renderRaid(){ if(!raid) return; const B=raid.B; let bot='';
-  if(raid.mode==='scout') bot=`<div class="scout"><button class="gbtn red" data-act="raidhome">🏠 Home</button><button class="gbtn blue" data-act="raidnext">Next ${C(A.nextCost())}</button><button class="gbtn orange" data-act="raidgo">⚔️ Attack!</button></div>`;
+  if(raid.mode==='scout') bot=`<div class="scout"><button class="gbtn red" data-act="raidhome">🏠 Home</button><button class="gbtn blue" data-act="raidnext">⏭ Next · free</button><button class="gbtn orange" data-act="raidgo">⚔️ Attack!</button></div>`;
   else if(raid.mode==='fight'){ const abil=B.units.filter(u=>u.type==='hero'&&!u.dead&&!u.used).map(u=>{ const k=WD.heroFor(u.sp); return `<button class="abtn" data-act="ability" data-id="${u.id}">${WD.HEROES[k].icon}<small>${WD.HEROES[k].ability}</small></button>`; }).join('');
     const cards=WD.TROOP_ORDER.filter(t=>(S.army.troops[t]||0)>0).map(t=>{ const n=B.deployLeft[t]||0; const s=raid.sel&&raid.sel.t===t; return `<button class="dcard ${s?'sel':''} ${n?'':'empty'}" data-act="dsel" data-id="${t}">${WD.TROOPS[t].icon}<span class="n">×${n}</span><span class="lv">Lv${B.research[t]||1}</span></button>`; }).join('')
       + B.heroesLeft.map(h=>{ const s=raid.sel&&raid.sel.hero===h.id; return `<button class="dcard hero ${s?'sel':''}" data-act="dhero" data-id="${h.id}">${WD.HEROES[WD.heroFor(h.species)].icon}<small>${h.name.split(' ')[0]}</small></button>`; }).join('');
@@ -531,7 +539,7 @@ function pAttack(){ const L=G.league(), lg=D.LEAGUES[L], nx=D.LEAGUES[L+1]; cons
   const hs=A.heroes().map(c=>`<span class="chip ok">${WD.HEROES[WD.heroFor(c.species)].icon} ${c.name.split(' ')[0]}</span>`).join('');
   h+=`<div class="sect">Your army · ${A.housed()}/${A.campCap()}</div><div class="chips">${army}${hs}</div><div class="row3"><button class="gbtn blue" data-act="openarmy">⛺ Train troops</button></div>
    <div class="sect">Drill raid</div><p class="fine">A practice raid on a rival station. Knock out 50% for a star, their HQ for another and the lot for the third. Loot and trophies on the line.</p>
-   <button class="gbtn orange wide" data-act="findraid">⚔️ Find a base · ${C(A.nextCost())}</button>
+   <button class="gbtn orange wide" data-act="findraid">⚔️ Find a fair match</button><p class="fine">Matchmaking pairs you with rivals within one Station level of yours and close to your army's strength. ⏭ Next is free.</p>
    <div class="row3"><button class="gbtn purple" data-act="deflog">🛡️ Defence log${newD?` (${newD} new)`:''}</button><button class="gbtn gold" data-act="opencup">🏆 Station Cup</button></div>`;
   return ['⚔️ Attack',h]; }
 function pArmy(){ const tabs=[['train','⛺','Train'],['lab','🧪','Research'],['heroes','🦘','Heroes']].map(([k,i,n])=>`<button class="ctab ${k===armyTab?'on':''}" data-act="armytab" data-v="${k}">${i}<small>${n}</small></button>`).join('');
@@ -540,7 +548,7 @@ function pArmy(){ const tabs=[['train','⛺','Train'],['lab','🧪','Research'],
     if(!A.barracksL()) h+=`<div class="note">Build a ⛺ Crew Barracks (🔨 Build ▸ Army) to train troops.</div>`;
     h+=`<div class="infobar">⛺ Barracks Lv ${A.barracksL()} · 💧 ${S.materials}/${A.waterCap()} water</div><div class="pbar big campbar"><i style="width:${cap?Math.min(100,used/cap*100):0}%"></i><span>Space ${used}/${cap}</span></div>`;
     if(S.army.queue.length) h+=`<div class="qrow">${S.army.queue.slice(0,12).map((q,i)=>`<span class="qchip">${WD.TROOPS[q.t].icon}<button data-act="untrain" data-id="${i}">✕</button></span>`).join('')}${S.army.queue.length>12?`+${S.army.queue.length-12}`:''}<span class="fine">ready in <b data-end="${S.army.queue[S.army.queue.length-1].end}"></b></span><button class="gbtn purple sm" data-act="trainfin">Finish ${B(A.trainSpeedCost())}</button></div>`;
-    h+=`<div class="tgrid">${WD.TROOP_ORDER.map(t=>{ const d=WD.TROOPS[t], ok=A.unlocked(t), n=S.army.troops[t]||0; return `<button class="tcard ${ok?'':'lock'}" data-act="ttrain" data-id="${t}">${n?`<span class="tn">×${n}</span>`:''}<div class="ti">${d.icon}</div><b>${d.name}</b><small>${ok?`💧${d.cost} · ⏱${d.time}s · 🏠${d.house}`:`🔒 Barracks Lv ${d.unlock}`}</small><small>Lv ${S.army.research[t]} · ${d.desc}</small></button>`; }).join('')}</div>`; }
+    h+=`<div class="tgrid">${WD.TROOP_ORDER.map(t=>{ const d=WD.TROOPS[t], ok=A.unlocked(t), n=S.army.troops[t]||0; return `<button class="tcard ${ok?'':'lock'}" data-act="ttrain" data-id="${t}">${n?`<span class="tn">×${n}</span>`:''}<div class="ti">${d.icon}</div><b>${d.name}</b><small>${ok?`💧${d.cost} · ⏱${d.time}s · 🏠${d.house}`:(S.level<d.st?`🔒 Unlocks at Station Lv ${d.st}`:`🔒 Barracks Lv ${d.unlock}`)}</small><small>Lv ${S.army.research[t]} · ${d.desc}</small></button>`; }).join('')}</div>`; }
   else if(armyTab==='lab'){ const L=A.labL(); if(!L) h+=`<div class="note">Build a 🧪 Research Lab (🔨 Build ▸ Army, station level 2) to research better troops.</div>`;
     h+=`<div class="infobar">🧪 Lab Lv ${L} · troop levels up to ${WD.maxResearch(L)}</div>`;
     if(S.army.lab){ const k=S.army.lab.t; h+=`<div class="ccard"><div class="cic">${WD.TROOPS[k].icon}</div><div class="cinfo"><div class="cname">${WD.TROOPS[k].name} → Lv ${S.army.research[k]+1}</div><div class="csub">done in <b data-end="${S.army.lab.end}"></b></div></div><button class="gbtn purple sm" data-act="labfin">${B(A.labSpeedCost())}</button></div>`; }
@@ -553,10 +561,27 @@ function pDefLog(){ let h=`<div class="infobar">🛡️ Fire waves and firebug g
   if(!S.def.log.length) h+=`<div class="empty">No raids yet. Build a 🔫 Hydrant Cannon and some 🧱 walls before the next wave.</div>`;
   for(const e of S.def.log){ h+=`<div class="dlog ${e.seen?'':'new'}"><div class="ds">${[0,1,2].map(i=>i<e.stars?'⭐':'☆').join('')}</div><div class="dinfo"><b>${e.stars?'Raided':'Defended!'} · ${e.name}</b><br>${e.pct}% damage · 🪙-${fmt(e.lost.coins)} 💧-${e.lost.mats} · 🏆${e.dT>0?'+':''}${e.dT}<br><span class="fine">${fmtTime((Date.now()-e.at)/1000)} ago</span></div><button class="gbtn orange sm" data-act="replay" data-id="${e.id}">▶ Replay</button></div>`; }
   return ['🛡️ Defence log',h]; }
-function handleV5(e){ if(e.trained){ trainedN++; if(Date.now()-trainedT>2500){ trainedT=Date.now(); setTimeout(()=>{ if(trainedN){ toast(`✅ ${trainedN>1?trainedN+' troops':WD.TROOPS[e.trained].name} ready`,'good'); Snd.train(); trainedN=0; } },300); } }
+function handleV5(e){ if(e.stationUp){ Snd.level(); setTimeout(()=>showUnlocks(e.stationUp,e.unlocks),300); } if(e.trained){ trainedN++; if(Date.now()-trainedT>2500){ trainedT=Date.now(); setTimeout(()=>{ if(trainedN){ toast(`✅ ${trainedN>1?trainedN+' troops':WD.TROOPS[e.trained].name} ready`,'good'); Snd.train(); trainedN=0; } },300); } }
   if(e.researched){ Snd.level(); toast(`🧪 ${WD.TROOPS[e.researched].name} is now level ${e.lv}!`,'gold'); }
   if(e.raided){ Snd.alarm(); const en=S.def.log.find(x=>x.id===e.raided); toast(`🔥 A ${en?.name.toLowerCase()||'fire wave'} hit your base: ${en?.stars||0}⭐. Check ⚔️ ▸ Defence log`,'bad'); } }
 function raidFrame(){ if(raid){ renderRaidTop(); if(raid.mode==='fight'){ const k=raid.B.units.filter(u=>u.type==='hero'&&!u.dead&&!u.used).length+'|'+raid.B.units.filter(u=>u.type==='hero'&&u.dead).length; if(k!==raid.abk){ raid.abk=k; renderRaid(); } } } }
 window.FST.raid={ scout:p=>scout(p), go:()=>raidGo(), st:()=>raid, defendNow:k=>{ const e=A.defendRaid(k); after(); return e; }, replay:id=>openReplay(id), home:()=>raidHome(), War, WD, A };
 
 requestAnimationFrame(t=>{ last=t; frame(t); });
+
+/* ---------- v5.2: Station level panel, unlock table and level-up popup ---------- */
+const KIND_LBL={build:'New',troop:'New troop',hero:'',cap:'',count:'More'};
+function unlockChips(items){ return items.map(x=>`<span class="uchip ${x.kind}">${x.icon} ${x.kind==='count'?`${x.name} ×${x.n}`:x.name}</span>`).join(''); }
+function pStation(){ const st=P.stationStatus(S,G.stationXpNeed(S.level)); let h=`<div class="sthead"><div class="stbig">${S.level}</div><div><b>Station level ${S.level}${st.max?' · MAX':''}</b><small>Your station level is your town's top rank. It gates what you can build, how many, how high you can upgrade and which troops you can train.</small></div></div>`;
+  if(!st.max){ if(st.up){ h+=`<div class="sect">Upgrading to Lv ${S.level+1}</div><div class="stat"><span>⏱ Time left</span><b data-end="${S.stUp.end}"></b></div><button class="gbtn purple wide" data-act="stspeed">⚡ Finish now · ${B(P.stationSpeedCost(S))}</button>`; }
+    else { h+=`<div class="sect">Upgrade to Lv ${S.level+1}: requirements</div>`+st.reqs.map(r=>`<div class="req ${r.done?'ok':''}"><span>${r.done?'✅':'⬜'} ${r.text}</span>${r.hint&&!r.done?`<small>${r.hint}</small>`:''}${r.n>1&&!r.done?`<small>${r.have}/${r.n}</small>`:''}</div>`).join('');
+      h+=`<div class="stat"><span>Cost</span><b>${C(st.cost[0])} 💧${st.cost[1]}</b></div><div class="stat"><span>Time</span><b>${fmtTime(st.time)}</b></div><button class="gbtn ${st.ok?'orange':'cant'} wide" data-act="stup">⬆️ Upgrade Station to Lv ${S.level+1}</button>`; }
+    h+=`<div class="sect">Unlocks at Lv ${S.level+1}</div><div class="uchips">${unlockChips(st.next)}</div>`; }
+  h+=`<div class="sect">Unlock table</div><div class="utable">${P.UNLOCK_TABLE.map(r=>`<div class="urow ${r.L<=S.level?'have':''} ${r.L===S.level+1?'next':''}"><b>Lv ${r.L}</b><div class="uchips">${unlockChips(r.items.filter(x=>x.kind!=='count'))}</div></div>`).join('')}</div>`;
+  return ['🚒 Station',h]; }
+function showUnlocks(L,items){ const list=items||P.unlocksAt(L); closePanel&&closePanel();
+  modal(`<div class="lvlup"><div class="lvburst">⭐</div><h2>Station level ${L}!</h2><p>Your station just ranked up. +5 badges. Here's what's new:</p><div class="uchips big">${unlockChips(list)}</div></div>`,
+    [{label:'🔨 Go build',fn:()=>{ buildCat='def'; openPanel('build'); }},{label:'Nice!',cls:'blue'}],'lvlmodal'); confettiBurst&&confettiBurst(); }
+function confettiBurst(){ const host=document.body; for(let i=0;i<40;i++){ const c=document.createElement('i'); c.className='conf'; c.style.left=(10+Math.random()*80)+'vw'; c.style.background=['#ffcf33','#e8281e','#29b6f6','#43c443','#ff7a1a'][i%5]; c.style.animationDelay=(Math.random()*.4)+'s'; host.appendChild(c); setTimeout(()=>c.remove(),2600); } }
+$('#slvl').closest('.player').addEventListener('click',()=>openPanel('station'));
+if(S.capNote){ const c=S.capNote; delete S.capNote; G.save(); if(!boot.fresh&&(c.levels||c.troops||c.vet)) setTimeout(()=>modal(`<h2>v5.2: Station levels</h2><p>Your Station level (Lv ${c.level}) now gates what you can build, how many and how high it goes. You keep everything you built.</p>${c.levels?`<div class="stat"><span>Items capped to your level</span><b>${c.levels}</b></div>`:''}${c.troops?`<div class="stat"><span>Locked troops refunded</span><b>${c.troops} (💧${c.refund})</b></div>`:''}<p class="fine">Tap the station shield (top-left) to see the unlock table and what the next upgrade needs.</p>`,[{label:'Got it'}]),900); }

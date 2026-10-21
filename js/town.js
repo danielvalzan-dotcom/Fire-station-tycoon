@@ -54,7 +54,7 @@ export function cellsOk(it,i,j,ignore){ const [w,h]=dims(it), out=[]; for(let a=
 /* ---------- build menu info ---------- */
 export function buildInfo(t){ const d=TB[t], L=S.level; const n=countOf(t), max=d.count(L);
   const cost = t==='hut' ? [0,0] : TD.upCost(t,1); const badges = t==='hut' ? (d.badges[n]??null) : 0;
-  let why=null; if(L<d.unlock) why=`Station level ${d.unlock}`; else if(n>=max) why=n>=d.count(99)?'Maxed':`Max ${max} at this station level`; else if(t==='hut'&&badges==null) why='All huts built';
+  let why=null; if(L<d.unlock) why=`Unlocks at Station Lv ${d.unlock}`; else if(n>=max) why=n>=d.count(99)?(d.count(99)<=1?'Built':'Maxed'):`Max ${max} at this station level · more at a higher Station Lv`; else if(t==='hut'&&badges==null) why='All huts built';
   return { t, d, n, max, cost, badges, why, time:TD.upTime(t,1) }; }
 export function place(t,i,j,r){ const bi=buildInfo(t); if(bi.why) return [bi.why]; const it={t,r:r||0};
   const e=canPlace(it,i,j); if(e) return [e];
@@ -71,7 +71,7 @@ export function info(id){ const it=byId(id); if(!it) return null; const d=TB[it.
     rate:producing(it)?rateNow(it):0, cap:TD.capAt(it.t,Math.max(1,it.l)), up:it.up&&it.up.end>now()?it.up:null, remaining:it.up?Math.max(0,(it.up.end-now())/1000):0 }; }
 export function startUp(id){ const i=info(id); if(!i) return 'Gone'; const it=i.it;
   if(it.dmg) return 'Damaged. Repair it first'; if(it.up) return 'Already building'; if(!i.next) return 'Max level';
-  if(i.next>i.maxL) return `Station level ${i.next-1} needed (upgrade buildings and run call-outs)`;
+  if(i.next>i.maxL) return `Needs Station Lv ${i.next-1} (tap the station shield to upgrade)`;
   if(TB[it.t].instant){ if(S.coins<i.cost[0]) return 'Not enough coins'; if(S.materials<i.cost[1]) return 'Not enough 💧 water'; S.coins-=i.cost[0]; S.materials-=i.cost[1]; it.l++; return null; }
   if(busy()>=totalBuilders()) return 'All builders are busy';
   if(S.coins<i.cost[0]) return 'Not enough coins'; if(S.materials<i.cost[1]) return 'Not enough 💧 water';

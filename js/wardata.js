@@ -1,13 +1,13 @@
 // Firey Station Tycoon v5: drill-raid data. Troops, defences, heroes, enemy fire waves. All original names.
 // Units are in tiles (1 tile = one grid cell). dps = damage per second, range in tiles, speed in tiles/s.
 export const TROOPS = {
-  hose:    { name:'Hose Crew',          icon:'🧑‍🚒', hp:110, dps:16, range:2.6, speed:1.5, house:1, prefer:'def',  cost:4,  time:8,  unlock:1, col:'#e53935', desc:'Sprays down defences first.' },
-  ladder:  { name:'Ladder Firey',       icon:'🪜', hp:190, dps:12, range:.7,  speed:1.6, house:2, prefer:'any',  cost:7,  time:12, unlock:1, col:'#fb8c00', jump:true, desc:'Climbs straight over walls.' },
-  chainsaw:{ name:'Chainsaw Cutter',    icon:'🪚', hp:95,  dps:14, range:.6,  speed:2.1, house:1, prefer:'wall', cost:5,  time:10, unlock:2, col:'#43a047', wallX:4, desc:'Cuts through firebreak walls fast.' },
-  hazmat:  { name:'Hazmat Specialist',  icon:'☣️', hp:160, dps:15, range:3.2, speed:1.2, house:3, prefer:'any',  cost:12, time:18, unlock:3, col:'#fdd835', splash:1.3, desc:'Foam blasts that hit a whole area.' },
-  tanker:  { name:'Tanker Truck',       icon:'🚛', hp:700, dps:18, range:.9,  speed:1.0, house:5, prefer:'res',  cost:20, time:30, unlock:4, col:'#8e24aa', big:true, desc:'Tough as. Goes for pumps and storages.' },
-  aerial:  { name:'Aerial Appliance',   icon:'🚒', hp:420, dps:34, range:4.8, speed:1.0, house:6, prefer:'any',  cost:28, time:40, unlock:5, col:'#d32f2f', big:true, desc:'Long-reach monitor on a turntable ladder.' },
-  heli:    { name:'Water-bomber Heli',  icon:'🚁', hp:480, dps:30, range:1.6, speed:1.4, house:8, prefer:'any',  cost:40, time:55, unlock:6, col:'#ff7043', air:true, splash:1.6, desc:'Flies over walls and dumps water on targets.' },
+  hose:    { name:'Hose Crew',          icon:'🧑‍🚒', hp:110, dps:16, range:2.6, speed:1.5, house:1, prefer:'def',  cost:4,  time:8,  unlock:1, st:1, col:'#e53935', desc:'Sprays down defences first.' },
+  ladder:  { name:'Ladder Firey',       icon:'🪜', hp:190, dps:12, range:.7,  speed:1.6, house:2, prefer:'any',  cost:7,  time:12, unlock:1, st:2, col:'#fb8c00', jump:true, desc:'Climbs straight over walls.' },
+  chainsaw:{ name:'Chainsaw Cutter',    icon:'🪚', hp:95,  dps:14, range:.6,  speed:2.1, house:1, prefer:'wall', cost:5,  time:10, unlock:2, st:3, col:'#43a047', wallX:4, desc:'Cuts through firebreak walls fast.' },
+  hazmat:  { name:'Hazmat Specialist',  icon:'☣️', hp:160, dps:15, range:3.2, speed:1.2, house:3, prefer:'any',  cost:12, time:18, unlock:3, st:4, col:'#fdd835', splash:1.3, desc:'Foam blasts that hit a whole area.' },
+  tanker:  { name:'Tanker Truck',       icon:'🚛', hp:700, dps:18, range:.9,  speed:1.0, house:5, prefer:'res',  cost:20, time:30, unlock:4, st:5, col:'#8e24aa', big:true, desc:'Tough as. Goes for pumps and storages.' },
+  aerial:  { name:'Aerial Appliance',   icon:'🚒', hp:420, dps:34, range:4.8, speed:1.0, house:6, prefer:'any',  cost:28, time:40, unlock:5, st:6, col:'#d32f2f', big:true, desc:'Long-reach monitor on a turntable ladder.' },
+  heli:    { name:'Water-bomber Heli',  icon:'🚁', hp:480, dps:30, range:1.6, speed:1.4, house:8, prefer:'any',  cost:40, time:55, unlock:6, st:7, col:'#ff7043', air:true, splash:1.6, desc:'Flies over walls and dumps water on targets.' },
 };
 export const TROOP_ORDER = Object.keys(TROOPS);
 export const troopStat = (t,lv) => { const d=TROOPS[t], k=1+.2*(lv-1); return { ...d, hp:Math.round(d.hp*k), dps:d.dps*k }; };
