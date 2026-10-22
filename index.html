@@ -382,6 +382,15 @@ body.raiding #hudTop,body.raiding #hudMid,body.raiding #hudBot,body.raiding #que
   document.addEventListener('touchmove',e=>{ if(!e.target.closest('.pbody,.mcard')) e.preventDefault(); },{passive:false});
   window.addEventListener('error',e=>{ const l=document.getElementById('loading'); if(l&&l.style.display!=='none') l.innerHTML='Oops, the station failed to load.<small>'+(e.message||'')+'</small>'; });
 </script>
+<script>
+/* v5.2.1: hidden fresh start. ?fresh=1 wipes only this game's saved data, then strips the param so a refresh keeps the new save. */
+(function(){try{var u=new URL(location.href);if(u.searchParams.get('fresh')!=='1')return;
+var mine=function(k){return k&&(k.indexOf('fst')===0||k.indexOf('fireyStationTycoon')===0);};
+[window.localStorage,window.sessionStorage].forEach(function(st){try{for(var i=st.length-1;i>=0;i--){var k=st.key(i);if(mine(k))st.removeItem(k);}}catch(e){}});
+try{if(window.indexedDB&&indexedDB.databases)indexedDB.databases().then(function(d){d.forEach(function(x){if(mine(x.name))indexedDB.deleteDatabase(x.name);});}).catch(function(){});}catch(e){}
+u.searchParams.delete('fresh');history.replaceState(history.state,'',u.pathname+(u.search||'')+u.hash);
+}catch(e){}})();
+</script>
 <script type="module">
   import('./js/main.js').then(()=>{ document.getElementById('loading').style.display='none'; })
     .catch(e=>{ document.getElementById('loading').innerHTML='Oops, the station failed to load.<small>'+e.message+'</small>'; console.error(e); });

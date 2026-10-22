@@ -70,3 +70,6 @@ The shop and the "ad" are DEMO ONLY. Nothing is sold, no ad network is loaded, a
 - **Fair matchmaking** (js/progress.js): a duel model compares your army's attack power (⚔️) with a base's defence score (🛡️). It searches generated bases at your station level ±1, with difficulty tunes from −4 to +4, for a ratio in the band 0.8–1.6. Trophy gains and losses scale with the mismatch. The scout card shows the rival's Station Lv, trophies and a Fair/Easy/Tough label, and "Next" is free.
 - **Save migration:** v5.1 saves keep every building. Levels above the new cap are lowered, over-cap upgrades are refunded and locked troops are refunded, and a one-off note explains the changes. Veterans skip the tutorial.
 - Tests: `node mm-check.mjs` checks fairness; `t10.mjs` runs a fresh-save playthrough and `t10m.mjs` a migration check (screens in screens-v52/).
+
+## v5.2.1
+- Hidden fresh start: open the game with `?fresh=1` to wipe this game's saved data (all `fst*` keys, including tutorial and unlock flags) and start a new Lv1 game. The parameter is then removed from the address bar, so refreshing doesn't wipe again. The normal link is unchanged. Test: `node t521.mjs`.
