@@ -1,6 +1,7 @@
 // Firey Station Tycoon v4: town rules (placement, upgrades, production, land, damage). No DOM.
 import * as TD from './towndata.js';
 import * as A from './army.js';
+import * as P from './progress.js';
 import { S, addCoins, addStationXP } from './state.js';
 const now=()=>Date.now(); const SQ=Math.SQRT1_2;
 const {TB,CELL,GRID,CHUNK}=TD; const HALF=GRID*CELL/2;
@@ -54,7 +55,7 @@ export function cellsOk(it,i,j,ignore){ const [w,h]=dims(it), out=[]; for(let a=
 /* ---------- build menu info ---------- */
 export function buildInfo(t){ const d=TB[t], L=S.level; const n=countOf(t), max=d.count(L);
   const cost = t==='hut' ? [0,0] : TD.upCost(t,1); const badges = t==='hut' ? (d.badges[n]??null) : 0;
-  let why=null; if(L<d.unlock) why=`Unlocks at Station Lv ${d.unlock}`; else if(n>=max) why=n>=d.count(99)?(d.count(99)<=1?'Built':'Maxed'):`Max ${max} at this station level · more at a higher Station Lv`; else if(t==='hut'&&badges==null) why='All huts built';
+  let why=null; if(S.stb&&S.stb!=='done') why='Build your Fire Station first'; else if(L<d.unlock) why=`Unlocks at Station Lv ${d.unlock}`; else if(P.starterPhase(S)&&!P.STARTER.includes(t)) why='Unlocks after your starter builds'; else if(n>=max) why=n>=d.count(99)?(d.count(99)<=1?'Built':'Maxed'):`Max ${max} at this station level · more at a higher Station Lv`; else if(t==='hut'&&badges==null) why='All huts built';
   return { t, d, n, max, cost, badges, why, time:TD.upTime(t,1) }; }
 export function place(t,i,j,r){ const bi=buildInfo(t); if(bi.why) return [bi.why]; const it={t,r:r||0};
   const e=canPlace(it,i,j); if(e) return [e];
@@ -62,7 +63,8 @@ export function place(t,i,j,r){ const bi=buildInfo(t); if(bi.why) return [bi.why
   if(!TB[t].instant && busy()>=totalBuilders()) return ['All builders are busy. Build a Builder Hut or speed one up'];
   S.coins-=bi.cost[0]; S.materials-=bi.cost[1]; S.badges-=bi.badges||0;
   const n={id:nid(),t,i,j,r:r||0,l:TB[t].instant?1:0,last:now(),store:0};
-  if(!TB[t].instant){ const tm=TD.upTime(t,1); n.up={start:now(),end:now()+tm*1000,total:tm}; }
+  const quick=P.starterPhase(S)&&P.STARTER.includes(t)&&countOf(t)===0; /* v5.3: the first starter builds finish fast */
+  if(!TB[t].instant){ const tm=quick?5:TD.upTime(t,1); n.up={start:now(),end:now()+tm*1000,total:tm}; }
   S.tw.items.push(n); return [null,n]; }
 export function move(id,i,j,r){ const it=byId(id); if(!it) return 'Gone'; const test={t:it.t,r:r??it.r}; const e=canPlace(test,i,j,it); if(e) return e; it.i=i; it.j=j; it.r=test.r; return null; }
 export const busy=()=>townBusy()+(S.buildings?Object.values(S.buildings).filter(b=>b.up).length:0);

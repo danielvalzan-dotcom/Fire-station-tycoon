@@ -38,13 +38,15 @@ export function load(){
   // v2 -> v3: keep everything, give each crew member an animal species
   try{ const v2=JSON.parse(localStorage.getItem(V2_KEY)||'null');
     if(v2&&v2.v===2&&Array.isArray(v2.crew)){ S=v2; S.v=5; S.migratedFrom='v2'; repair(); save(); return {fresh:true, migrated:{fromV2:true, crew:S.crew.length}}; } }catch(e){ console.warn('v2 save unreadable', e); }
-  newState(); T.ensureTown(); A.ensureArmy(); T.starterV5&&T.starterV5(); let migrated=null;
+  newState(); /* v5.3: brand-new games start on an empty block; build the station first */
+  S.v53=1; S.stb='none'; S.v5start=true; S.coins=600; S.materials=60; S.tw=T.newTown();
+  T.ensureTown(); A.ensureArmy(); let migrated=null;
   try{ const old=JSON.parse(localStorage.getItem(OLD_KEY)||'null');
     if(old&&typeof old==='object'){ const earned=+old.stats?.earned||+old.coins||0;
       migrated={ coins:Math.min(6000,Math.round(250+Math.sqrt(Math.max(0,earned))*25)), badges:Math.min(150,25+(old.stations||1)*10+(old.stats?.rushWins||0)*5), fromLevel:old.level||1 };
       S.coins+=migrated.coins; S.badges+=migrated.badges; S.migratedFrom='v1'; S.prefs.sfx=old.sfx!==false; S.prefs.music=old.music!==false; } }catch(e){}
   save(); return {fresh:true, migrated}; }
-function repair(){ const pre52=S.p52===undefined; const def=defaults();
+function repair(){ const pre52=S.p52===undefined; const def=defaults(); if(S.stb===undefined) S.stb='done'; /* pre-5.3 saves already have a station */
   for(const k of Object.keys(def)) if(S[k]===undefined) S[k]=def[k];
   for(const id of D.BUILD_ORDER) if(!S.buildings[id]) S.buildings[id]={l:0};
   S.crew.forEach((c,i)=>{ c.gear=Object.assign({helmet:0,coat:0,boots:0,ba:0},c.gear); for(const [k] of D.ROLES[c.role].skills) if(!c.sk[k]) c.sk[k]=1;
@@ -59,6 +61,7 @@ function repair(){ const pre52=S.p52===undefined; const def=defaults();
 }
 function defaults(){ const keep=S; const d=newState(); S=keep; delete d.tw; return d; }
 export function save(){ if(!S) return; S.lastSeen=now(); try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+export function buildStation(){ if(S.stb!=='none') return S.stb==='done'?'Already built':'Already building'; S.stb='building'; S.stbEnd=now()+5000; return null; }
 export function resetAll(){ try{ localStorage.removeItem(KEY); }catch(e){} newState(); save(); }
 
 /* ---------- station level ---------- */
@@ -317,6 +320,8 @@ function disasterTick(events){ const t=now(), a=S.dis.active;
 export function tick(){ const events=[]; sizzleTick(); T.townTick(events); A.armyTick(events); P.stationTick(S,events);
   const built=finishBuildings(); built.forEach(id=>events.push({built:id}));
   resolveCalls().forEach(r=>events.push({result:r}));
+  if(S.stb==='building'&&now()>=S.stbEnd){ S.stb='done'; S.nextCallAt=now()+15000; events.push({stBuilt:true}); }
+  if(S.stb!=='done'){ S.nextCallAt=Math.max(S.nextCallAt,now()+15000); S.rush.next=Math.max(S.rush.next,now()+5*60e3); S.dis.next=Math.max(S.dis.next,now()+6*60e3); return events; }
   if(now()>=S.nextCallAt){ const first=S.firstCallsDone===0&&!S.calls.some(c=>c.type==='bin');
     const c=spawnCall(first?'bin':null); S.nextCallAt=now()+D.callEvery(bl('comms'))*1000*rnd(.8,1.2); if(c) events.push({newCall:c}); }
   if(!S.dis.active) rushTick(events); disasterTick(events); return events; }

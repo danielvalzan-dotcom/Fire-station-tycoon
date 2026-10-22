@@ -12,11 +12,12 @@ const isDef = t => W.DEF_TYPES.includes(t);
 export function genBase(level, seed, name, tune=0){ const L=Math.max(1,Math.min(10,level|0)), r=rng(seed); const items=[]; const occ=new Set();
   const free=(i,j,w,h,pad=0)=>{ for(let a=-pad;a<w+pad;a++) for(let b=-pad;b<h+pad;b++){ const ci=i+a,cj=j+b; if(ci<1||cj<1||ci>=N-1||cj>=N-1) return false; if(occ.has(ci+','+cj)) return false; } return true; };
   const put=(t,i,j,lv)=>{ const d=TB[t]; for(let a=0;a<d.w;a++) for(let b=0;b<d.h;b++) occ.add((i+a)+','+(j+b)); items.push({t,i,j,lv:Math.max(1,Math.min(TB[t].max,lv))}); return true; };
-  const lvl=()=>Math.max(1,Math.min(L+1,L-(r()<.5?1:0)-(r()<.25?1:0)+tune)); // tune -1/0/+1 nudges difficulty within a level (matchmaking)
+  const lvl=()=>Math.max(1,Math.min(L+1,L-(r()<(L>=7?.2:.5)?1:0)-(r()<(L>=7?.08:.25)?1:0)+tune)); // tune -1/0/+1 nudges difficulty within a level (matchmaking)
   const c=12; put('hq',c,c,L);
   // inner ring of 2x2s around the HQ
   const inner=[[c-2,c-2],[c+4,c-2],[c-2,c+4],[c+4,c+4],[c+1,c-2],[c+1,c+4],[c-2,c+1],[c+4,c+1]];
   const defs=['cannon']; for(let k=1;k<1+Math.ceil(L/2);k++) defs.push('cannon'); for(let k=0;k<Math.ceil(L/2);k++) defs.push('sprinkler'); for(let k=0;k<Math.max(0,Math.floor((L-1)/2));k++) defs.push('mortar'); for(let k=0;k<Math.max(0,Math.floor((L-2)/2));k++) defs.push('bomber');
+  if(L>=7) for(let k=0;k<L-5;k++) defs.push('cannon','mortar','sprinkler',L>=8?'bomber':'cannon'); // v5.3: late-game bases were too weak for a full army
   if(tune<=-3) defs.splice(1,Math.min(defs.length-1,-tune-2+Math.floor(defs.length/3))); // matchmaking: a thinner base for a small army
   if(tune>=3) for(let k=0;k<tune-2;k++) defs.push(L>=4?'bomber':'sprinkler','sprinkler'); // matchmaking: more anti-air for a big army
   const stores=['vault','tank']; if(L>=3) stores.push('vault','tank');

@@ -1,7 +1,7 @@
 // Firey Station Tycoon v3: game data. Pure data, no DOM. Tweak balance here.
 // Fictional game. Not affiliated with any fire service. Names, places and stations are made up.
 
-export const VERSION = '5.2.1';
+export const VERSION = '5.3';
 
 export const BUILDINGS = {
   engine:   { name:'Engine Bay',        icon:'🚒', max:10, base:120,  g:1.75, t0:20,  tg:1.75,

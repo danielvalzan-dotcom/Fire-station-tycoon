@@ -114,6 +114,7 @@ export class BaseScene {
     const slab=new THREE.Group(); slab.rotation.y=Math.PI/4; s.add(slab);
     const base=rbox(12.6,1.2,27.6,.5,M('#8a6a45',{shine:10})); at(base,0,-0.6,0); slab.add(base);
     const top=rbox(12.4,.3,27.4,.14,M('#79c24f',{shine:14})); at(top,0,-0.05,0); slab.add(top);
+    const slab0=slab.children.length;
     // concrete apron + driveway
     const apron=rbox(8.6,.12,6.6,.1,M('#d6d0c4',{shine:20})); at(apron,0,0.12,6.6); slab.add(apron);
     const drive=rbox(3.6,.1,6,.08,M('#5b6068',{shine:10})); at(drive,0,0.1,11.3); slab.add(drive);
@@ -121,6 +122,7 @@ export class BaseScene {
     const pathM=M('#e7dcc0',{shine:10});
     [[0,-2,1.3,15.5]].forEach(([x,z,w,d])=>{ const p=rbox(w,.08,d,.04,pathM); at(p,x,0.12,z); slab.add(p); });
     [[-4.6],[-0.2],[ -9.4]].forEach(([z])=>{ const p=rbox(10.4,.08,1.0,.04,pathM); at(p,0,0.12,z+2.4); slab.add(p); });
+    this.decoObjs=slab.children.slice(slab0);
     // road leaving the base (down the screen)
     const road=box(3.8,.1,70,M('#4e535a',{shine:6})); road.rotation.y=Math.PI/4; const rp=uv(0,48); at(road,rp.x,-0.55,rp.z); road.receiveShadow=true; s.add(road);
     for(let i=0;i<26;i++){ const dsh=box(.18,.02,1.1,M('#ffffff')); dsh.rotation.y=Math.PI/4; const dp=uv(0,15+i*2.6); at(dsh,dp.x,-0.48,dp.z); s.add(dsh); }
@@ -133,11 +135,16 @@ export class BaseScene {
     const rnd=mulberry(7);
     // v4: surrounding bush is instanced by the town layer
     // decorations inside
+    const sc0=s.children.length;
     for(const [u,v] of [[-5.3,-12.6],[5.3,-12.6],[-5.3,12.4],[5.3,9.5],[-5.3,4.2],[5.4,-1.8],[-0.2,-12.8]]){ const p=uv(u,v); this.tree(p.x,p.z,0.55,rnd); }
     this.flag(uv(-4.6,9.6));
     this.waterTank(uv(4.9,11.4));
     this.hoseReel(uv(-4.4,11.6));
     this.car(uv(4.9,-7.2),'#ffffff',0.2); this.car(uv(-5.1,-7.0),'#2e7dd7',1.2);
+    this.decoObjs.push(...s.children.slice(sc0));
+    { // v5.3: the compound's apron, paths and props live in their own group so a brand-new game can show an empty block
+      const dg=new THREE.Group(), ds=new THREE.Group(); ds.rotation.y=slab.rotation.y; dg.add(ds);
+      this.decoObjs.forEach(o=>{ if(o.parent===slab){ slab.remove(o); ds.add(o); } else { s.remove(o); dg.add(o); } }); s.add(dg); this.decoGrp=dg; }
     // buildings
     for(const id of Object.keys(LAYOUT)) this.makeBuilding(id,1);
     // selection ring
@@ -149,7 +156,7 @@ export class BaseScene {
     // smoke puffs pool
     this.puffs=[]; for(let i=0;i<70;i++){ const p=sph(.25,M('#ffffff',{op:.8,shine:0})); p.castShadow=false; p.visible=false; s.add(p); this.puffs.push({m:p,life:0}); }
   }
-  mergeStatics(){ const skip=new Set([...Object.values(this.buildings).map(b=>b.group),...this.walkers.map(w=>w.m),...this.puffs.map(p=>p.m),this.ring,this.flagMesh]);
+  mergeStatics(){ if(this.flagMesh) this.flagMesh.userData.keep=true; if(this.decoGrp) bake(this.decoGrp); const skip=new Set([this.decoGrp,...Object.values(this.buildings).map(b=>b.group),...this.walkers.map(w=>w.m),...this.puffs.map(p=>p.m),this.ring,this.flagMesh]);
     const st=new THREE.Group(); st.name='statics'; const mv=this.scene.children.filter(o=>(o.isMesh||o.type==='Group')&&!skip.has(o)&&!o.isLight);
     mv.forEach(o=>{ this.scene.remove(o); st.add(o); }); this.scene.add(st); bake(st); this.statics=st; }
   tree(x,z,sc,rnd){ const t=new THREE.Group(); const trunk=cyl(.12*sc,.16*sc,.8*sc,M('#7a4b2a'),8); at(trunk,0,.4*sc,0); t.add(trunk);
@@ -192,7 +199,7 @@ export class BaseScene {
     const inner=new THREE.Group(); grp.add(inner);
     const lv=level|0; const trim = lv>=7?'#ffcf33':lv>=4?'#ffe8a3':'#ffffff';
     const sc=0.9+Math.min(lv,10)*0.012;
-    if(lv<=0){ this.plot(inner,L,state.locked); }
+    if(lv<=0){ this.plot(inner,L,state.locked,state.lot); }
     else { const before=new Map(Object.entries(this)); this['b_'+id](inner,L,lv,trim);
       for(const [k,v] of Object.entries(this)){ if(before.get(k)===v) continue; const mark=o=>{ if(o&&o.isObject3D){ o.userData.keep=true; } }; if(Array.isArray(v)) v.forEach(mark); else mark(v); }
       if(id==='engine') this.emblem(inner,L,lv); bake(inner,{toon:id.length*7+lv}); }
@@ -203,12 +210,14 @@ export class BaseScene {
     this.scene.add(grp); const bb=new THREE.Box3().setFromObject(inner); const top=lv<=0?1.6:Math.min(id==='comms'?2.4:9,bb.max.y-0.1);
     this.buildings[id]={group:grp,inner,hit,level:lv,state,top};
     return grp; }
-  setBuilding(id, level, state){ const b=this.buildings[id]; const key=level+'|'+!!state.upgrading+'|'+!!state.locked;
+  // v5.3: a brand-new game shows an empty fenced block with one 'build the station' lot
+  setEmpty(on){ on=!!on; if(this.decoGrp) this.decoGrp.visible=!on; this.walkers.forEach(w=>w.m.visible=!on); if(on) (this.puffs||[]).forEach(p=>{ p.m.visible=false; p.life=0; }); for(const [id,b] of Object.entries(this.buildings)) b.group.visible=!on||id==='engine'; this.emptyLot=on; }
+  setBuilding(id, level, state){ const b=this.buildings[id]; const key=level+'|'+!!state.upgrading+'|'+!!state.locked+'|'+!!state.lot;
     if(b && b.key===key) return; this.makeBuilding(id,level,state); this.buildings[id].key=key; if(b) this.bounce(id); }
-  plot(g,L,locked){ const pad=rbox(L.w,.12,L.d,.1,M(locked?'#9b8c78':'#b98c5a',{shine:5})); at(pad,0,.06,0); g.add(pad);
+  plot(g,L,locked,lot){ const pad=rbox(L.w,.12,L.d,.1,M(locked?'#9b8c78':'#b98c5a',{shine:5})); at(pad,0,.06,0); g.add(pad);
     for(let i=0;i<4;i++){ const cone=new THREE.Mesh(new THREE.ConeGeometry(.16,.45,10),M('#ff7a1a',{shine:60})); cone.castShadow=true;
       at(cone,(i%2?1:-1)*(L.w/2-.3),.32,(i<2?1:-1)*(L.d/2-.3)); g.add(cone); }
-    const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.8,.55),new THREE.MeshBasicMaterial({map:textTex(locked?'LOCKED':'BUILD ME',{bg:locked?'#555':'#2e7d32',size:62})}));
+    const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.8,.55),new THREE.MeshBasicMaterial({map:textTex(lot?'FIRE STATION':locked?'LOCKED':'BUILD ME',{bg:locked?'#555':'#2e7d32',size:62})}));
     const post=box(.08,.9,.08,M('#8d6e63')); at(post,0,.45,L.d/2-.5); g.add(post); at(sign,0,1.05,L.d/2-.45); sign.rotation.y=Math.PI/4; g.add(sign);
     if(!locked){ const crate=rbox(.6,.5,.6,.08,M('#c58b4b')); at(crate,-.6,.3,-.4); const crate2=crate.clone(); at(crate2,-.2,.3,-.9); g.add(crate,crate2); } }
   scaffold(g,L){ const m=M('#b0b7bd',{shine:60}); const h=2.8;
@@ -371,7 +380,7 @@ export class BaseScene {
     if(this.mastTip) this.mastTip.material.emissiveIntensity=(Math.sin(t*4)>0)?1.2:.1;
     if(this.climber&&this.towerH){ const ph=(t*.12)%2; const y=ph<1?ph:2-ph; this.climber.position.set(this.climber.userData.x,.1+y*(this.towerH-.9),.55); }
     // chimney smoke
-    if(this.chimneyObj){ this.smokeT=(this.smokeT||0)+dt; if(this.smokeT>.45){ this.smokeT=0; const p=this.puffs.find(p=>p.life<=0); if(p){ p.m.material.color.set('#ffffff'); const w=new THREE.Vector3(); this.chimneyObj.getWorldPosition(w); p.m.position.copy(w).add(new THREE.Vector3(0,.55,0)); p.life=2.4; p.m.visible=true; } } }
+    if(this.chimneyObj&&!this.emptyLot){ this.smokeT=(this.smokeT||0)+dt; if(this.smokeT>.45){ this.smokeT=0; const p=this.puffs.find(p=>p.life<=0); if(p){ p.m.material.color.set('#ffffff'); const w=new THREE.Vector3(); this.chimneyObj.getWorldPosition(w); p.m.position.copy(w).add(new THREE.Vector3(0,.55,0)); p.life=2.4; p.m.visible=true; } } }
     if(this.dmg) for(const k in this.dmg){ const d=this.dmg[k]; d.t+=dt; if(d.t>.32){ d.t=0; const p=this.puffs.find(p=>p.life<=0); if(p){ p.m.material.color.set('#555555'); p.m.position.copy(d.pos).add(new THREE.Vector3((Math.random()-.5)*.8,0,(Math.random()-.5)*.8)); p.m.visible=true; p.life=2.4; } } }
     for(const p of this.puffs){ if(p.life>0){ p.life-=dt; p.m.position.y+=dt*.6; p.m.position.x+=dt*.25; const k=1-p.life/2.4; p.m.scale.setScalar(.6+k*1.6); p.m.material.opacity=.75*(1-k); if(p.life<=0) p.m.visible=false; } }
     // walkers
@@ -410,7 +419,7 @@ export class BaseScene {
     el.addEventListener('wheel',e=>{ e.preventDefault(); this.zoom=Math.max(this.zMin,Math.min(this.zMax,this.zoom*(e.deltaY>0?.92:1.08))); this.updateCam(); },{passive:false});
   }
   tap(cx,cy){ const r=this.renderer.domElement.getBoundingClientRect(); this.ptr.set((cx-r.left)/r.width*2-1, -((cy-r.top)/r.height)*2+1);
-    this.raycaster.setFromCamera(this.ptr,this.cam); if(this.battle){ this.battle.tap(this.raycaster,cx,cy); return; } if(this.town&&this.town.tap(this.raycaster,cx,cy)) return; const hits=this.raycaster.intersectObjects(Object.values(this.buildings).map(b=>b.hit),false);
+    this.raycaster.setFromCamera(this.ptr,this.cam); if(this.battle){ this.battle.tap(this.raycaster,cx,cy); return; } if(this.town&&this.town.tap(this.raycaster,cx,cy)) return; const hits=this.raycaster.intersectObjects(Object.values(this.buildings).filter(b=>b.group.visible).map(b=>b.hit),false);
     if(hits.length){ this.onSelect(hits[0].object.userData.bid); } else this.onTapEmpty(); }
 }
 function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }

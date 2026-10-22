@@ -58,8 +58,20 @@ export const TUTORIAL = [
   { id:'raid',    text:'Win a drill raid (1★ or better)',           hint:'Attack! ▸ Find a base',                 reward:{badges:10},           done:S=>S.raidStats.stars>=1 },
   { id:'station', text:'Upgrade the Station to Lv 2',               hint:'Tap the station level shield',          reward:{coins:300,badges:15}, done:S=>S.level>=2 },
 ];
-export const tutStep = S => S.tg&&!S.tg.done ? TUTORIAL[S.tg.i]||null : null;
-export function tutClaim(S){ const q=tutStep(S); if(!q||!q.done(S)) return null; const r=q.reward; S.coins+=r.coins||0; S.badges+=r.badges||0; S.materials+=r.mats||0; S.tg.i++; if(S.tg.i>=TUTORIAL.length) S.tg.done=true; return r; }
+// v5.3: new games start on empty land and the tutorial walks the build order (old saves keep TUTORIAL above)
+export const STARTER = ['barracks','mint']; // buildable before the rest of the Lv1 table opens
+export const TUTORIAL53 = [
+  { id:'station', text:'Build your Fire Station',   hint:'Tap the empty lot or Build ▸ Build your Fire Station', reward:{coins:100},          done:S=>S.stb==='done' },
+  { id:'barracks',text:'Build the Crew Barracks',   hint:'Build ▸ Army ▸ Crew Barracks, then place it',   reward:{coins:100},           done:S=>S.tw.items.some(x=>x.t==='barracks'&&x.l>=1) },
+  { id:'mint',    text:'Build a Coin Press',        hint:'Build ▸ Resources ▸ Coin Press',               reward:{coins:150,mats:20},  done:S=>S.tw.items.some(x=>x.t==='mint'&&x.l>=1) },
+  { id:'train',   text:'Recruit 5 Hose Crews',      hint:'Army ▸ Train',                                  reward:{coins:200},           done:S=>(S.army.troops.hose||0)+(S.raidStats.raids?5:0)>=5 },
+  { id:'raid',    text:'Win your first raid (1★ or better)', hint:'Attack! ▸ Find a fair match',          reward:{badges:10},           done:S=>S.raidStats.stars>=1 },
+  { id:'stlv2',   text:'Upgrade the Station to Lv 2', hint:'Tap the station level shield',                reward:{coins:300,badges:15}, done:S=>S.level>=2 },
+];
+export const tutList = S => S.v53 ? TUTORIAL53 : TUTORIAL;
+export const starterPhase = S => !!(S.v53 && S.tg && !S.tg.done && S.tg.i<3);
+export const tutStep = S => S.tg&&!S.tg.done ? tutList(S)[S.tg.i]||null : null;
+export function tutClaim(S){ const q=tutStep(S); if(!q||!q.done(S)) return null; const r=q.reward; S.coins+=r.coins||0; S.badges+=r.badges||0; S.materials+=r.mats||0; const was=starterPhase(S); S.tg.i++; if(S.tg.i>=tutList(S).length) S.tg.done=true; return was&&!starterPhase(S)?{...r,opened:true}:r; }
 
 /* ---------- fair matchmaking ---------- */
 // Duel model. The army has to chew through the base's HP (time = baseHP / armyDPS) while the defences chew through the

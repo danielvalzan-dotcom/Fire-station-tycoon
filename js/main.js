@@ -113,7 +113,7 @@ function renderTownSheet(){ const i=T.info(sheetTown); if(!i){ closeSheet(); ret
 /* ---------- v4: build menu ---------- */
 let buildCat='home';
 function pBuild(){ const cats=TD.CATS.map(([k,ic,n])=>`<button class="ctab ${k===buildCat?'on':''}" data-act="bcat" data-v="${k}">${ic}<small>${n}</small></button>`).join('');
-  let h=`<div class="ctabs">${cats}</div><button class="stbar" data-act="openstation">🚒 Station Lv <b>${S.level}</b> ${S.stUp?'· upgrading':P.stationStatus(S,G.stationXpNeed(S.level)).ok?'· ⬆️ ready to upgrade!':'· see what unlocks next ›'}</button><div class="infobar">👷 Builders ${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()} free · 💧 ${S.materials} · 👥 ${T.population()} residents · <button class="gbtn orange sm" data-act="collectall">Collect all</button></div>`;
+  let h=`<div class="ctabs">${cats}</div>${S.stb&&S.stb!=='done'?`<button class="stbar" data-act="buildstation">🚒 ${S.stb==='building'?'Fire Station under construction…':'<b>Build your Fire Station</b> · free · ready in 5 s'}</button>`:''}<button class="stbar" data-act="openstation">🚒 Station Lv <b>${S.level}</b> ${S.stUp?'· upgrading':P.stationStatus(S,G.stationXpNeed(S.level)).ok?'· ⬆️ ready to upgrade!':'· see what unlocks next ›'}</button><div class="infobar">👷 Builders ${G.totalBuilders()-G.buildersBusy()}/${G.totalBuilders()} free · 💧 ${S.materials} · 👥 ${T.population()} residents · <button class="gbtn orange sm" data-act="collectall">Collect all</button></div>`;
   if(buildCat==='land'){ const pi=T.plotInfo(); h+=`<div class="ccard"><div class="cic">🗺️</div><div class="cinfo"><div class="cname">Expand your land</div><div class="csub">You own ${S.tw.plots.length} plots (max ${TD.plotsAllowed(S.level)} at station level ${S.level}). Next plot ${C(pi.cost)}${pi.mats?` 💧${pi.mats}`:''}</div></div><button class="gbtn green sm" data-act="expand">Choose plot</button></div>`; return ['🔨 Build',h]; }
   h+='<div class="bgrid">'; for(const t of TD.TB_ORDER){ const d=TD.TB[t]; if(d.cat!==buildCat) continue; const bi=T.buildInfo(t); const cost=bi.badges?B(bi.badges):(bi.cost[0]?C(bi.cost[0]):'Free')+(bi.cost[1]?` 💧${bi.cost[1]}`:'');
     h+=`<button class="bcard ${bi.why?'lock':''}" data-act="bplace" data-id="${t}"><div class="bic">${d.icon}</div><b>${d.name}</b><small class="bsz">${d.w}×${d.h}${d.max>1?` · ${d.max} levels`:''}</small><small class="bfx">${fxLine(d,1)}</small><div class="bcost">${bi.why?`🔒 ${bi.why}`:cost}</div><span class="bcnt">${bi.n}/${bi.max}</span></button>`; }
@@ -135,7 +135,7 @@ function hud(){
   disBanner();
   const ts=P.tutStep(S); const q=ts?null:G.currentQuest(); const qe=$('#quest');
   if(ts){ const done=ts.done(S); const rw=[ts.reward.coins?`${ICON.coin}${ts.reward.coins}`:'',ts.reward.badges?`${ICON.badge}${ts.reward.badges}`:'',ts.reward.mats?`💧${ts.reward.mats}`:''].join(' ');
-    const h=`<span class="qi">🎓</span><span class="qt"><small>Tutorial ${S.tg.i+1}/${P.TUTORIAL.length}</small> ${ts.text}${done?'':`<small class="qh">${ts.hint}</small>`}</span>${done?`<button class="gbtn green sm" data-act="tutclaim">Claim ${rw}</button>`:`<span class="qr">${rw}</span>`}`;
+    const h=`<span class="qi">🎓</span><span class="qt"><small>Tutorial ${S.tg.i+1}/${P.tutList(S).length}</small> ${ts.text}${done?'':`<small class="qh">${ts.hint}</small>`}</span>${done?`<button class="gbtn green sm" data-act="tutclaim">Claim ${rw}</button>`:`<span class="qr">${rw}</span>`}`;
     if(qe._h!==h){ qe.innerHTML=h; qe._h=h; } qe.classList.toggle('ready',done); qe.style.display=''; }
   else if(q){ const done=q.done(); const h=`<span class="qi">🎯</span><span class="qt">${q.text}</span>${done?`<button class="gbtn green sm" data-act="claim">Claim ${ICON.badge}${q.reward}</button>`:`<span class="qr">${ICON.badge}${q.reward}</span>`}`;
     if(qe._h!==h){ qe.innerHTML=h; qe._h=h; } qe.classList.toggle('ready',done); qe.style.display=''; } else qe.style.display='none';
@@ -163,7 +163,7 @@ function fakeAd(done){ let n=3; modal(`<h2>Sponsored</h2><div class="adbox"><spa
 
 /* ---------- building sheet ---------- */
 let sheetId=null;
-function openBuilding(id){ sheetTown=null; town.select(null); sheetId=id; scene.select(id); Snd.pop(); renderSheet(); $('#sheet').classList.add('on'); }
+function openBuilding(id){ if(S.stb&&S.stb!=='done'){ stationBuildPrompt(); return; } sheetTown=null; town.select(null); sheetId=id; scene.select(id); Snd.pop(); renderSheet(); $('#sheet').classList.add('on'); }
 function closeSheet(){ sheetId=null; sheetTown=null; town.select(null); scene.select(null); $('#sheet').classList.remove('on'); }
 function renderSheet(){ if(sheetTown) return renderTownSheet(); if(!sheetId) return; const id=sheetId, i=G.bInfo(id), def=D.BUILDINGS[id]; const el=$('#sheet .sbody');
   let act='';
@@ -330,8 +330,9 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('[data-act
   case 'train': { const m=S.crew.find(c=>c.id===id); const [er,ups]=G.train(m); if(err(er)) break; Snd.skill(); if(ups.length){ Snd.level(); toast(`⭐ ${m.name} reached Lv ${m.lvl}! +1 skill point`,'gold'); } else toast(`🏋️ ${m.name} smashed the drill (+XP)`,'good'); after(); break; }
   case 'skill': { const m=S.crew.find(c=>c.id===id); if(err(G.upSkill(m,b.dataset.k))) break; Snd.skill(); after(); break; }
   case 'gear': { const m=S.crew.find(c=>c.id===id); if(err(G.upGear(m,b.dataset.k))) break; Snd.equip(); const t=m.gear[b.dataset.k]; toast(`${D.RARITY[t].name} gear fitted to ${m.name}!`, t>=3?'gold':'good'); if(t>=3) Snd.buildDone(); after(); break; }
-  case 'tutclaim': { const r=P.tutClaim(S); if(r){ Snd.collect(); toast(`🎓 Goal done! ${r.coins?'+'+r.coins+' coins ':''}${r.badges?'+'+r.badges+' badges ':''}${r.mats?'+'+r.mats+' 💧':''}`,'gold'); after(); } break; }
+  case 'tutclaim': { const r=P.tutClaim(S); if(r&&r.opened) setTimeout(()=>showUnlocks(S.level,P.unlocksAt(1).filter(x=>x.kind==='build'&&!P.STARTER.includes(x.t)),{title:'New buildings unlocked!',sub:'Your starter base is up and running. More of the town opens up:'}),600); if(r){ Snd.collect(); toast(`🎓 Goal done! ${r.coins?'+'+r.coins+' coins ':''}${r.badges?'+'+r.badges+' badges ':''}${r.mats?'+'+r.mats+' 💧':''}`,'gold'); after(); } break; }
   case 'openstation': openPanel('station'); break;
+  case 'buildstation': stationBuildPrompt(); break;
   case 'stup': { if(err(P.startStationUp(S,G.stationXpNeed(S.level)))) break; Snd.thud(); toast(`🚒 Station upgrade started`,'' ); after(); break; }
   case 'stspeed': { if(err(P.speedStation(S))) break; Snd.collect(); handle(G.tick()); after(); break; }
   case 'claim': { const n=G.claimQuest(); if(n){ Snd.collect(); toast(`🎯 Goal complete! +${n} badges`,'gold'); after(); } break; }
@@ -451,7 +452,9 @@ function handle(evts){ for(const e of evts){ handleV5(e);
   if(e.rushLose){ Snd.lose(); Music.boost=0; toast(`Rush Hour over: ${e.done}/3. She'll be right next time!`); }
 } if(evts.length) after(true); }
 function after(fromTick){ hud(); syncScene(); syncWeather(); if(view&&!(fromTick&&view==='dispatch')) renderPanel(); renderSheet(); G.save(); }
-function syncScene(){ town.sync(S); if(sheetTown) town.select(sheetTown); for(const id of D.BUILD_ORDER){ const i=G.bInfo(id); scene.setBuilding(id,i.l,{upgrading:!!i.up,locked:i.locked}); scene.setDamage(id,i.dmg&&i.l>0); } scene.setXmas?.(S.xmas); }
+function syncScene(){ town.sync(S); if(sheetTown) town.select(sheetTown);
+  if(S.stb&&S.stb!=='done'){ scene.setBuilding('engine',0,{upgrading:S.stb==='building',locked:false,lot:true}); labelsEl.style.display='none'; scene.setEmpty(true); scene.setXmas?.(S.xmas); return; } if(scene.emptyLot){ scene.setEmpty(false); labelsEl.style.display=''; }
+  for(const id of D.BUILD_ORDER){ const i=G.bInfo(id); scene.setBuilding(id,i.l,{upgrading:!!i.up,locked:i.locked}); scene.setDamage(id,i.dmg&&i.l>0); } scene.setXmas?.(S.xmas); }
 function syncWeather(){ const a=G.dis(); const wx=a&&a.phase==='active'?D.DISASTERS[a.type].wx:null; weather.set(wx); scene.setMood(wx); if(!wx&&Music.boost===18) Music.boost=0; }
 function syncHeads(){ scene.setHeads(S.crew.slice(0,6).map(c=>({url:headURL(c.species,isElite(c)), svg:headSVG(c)}))); }
 function collectSizzle(){ const n=G.collectSizzle(); if(n){ Snd.collect(); toast(`🌭 Sausage sizzle takings: +${fmt(n)} coins`,'gold'); after(); } }
@@ -470,7 +473,7 @@ window.addEventListener('pagehide',()=>G.save());
 /* ---------- welcome ---------- */
 const away=(Date.now()-S.lastSeen)/1000;
 if(boot.fresh){
-  modal(`<div class="logo">Firey<span>Station Tycoon</span></div><p>G'day, Boss! You've taken over <b>Snag Flats Station</b>: a tired engine bay, four keen Aussie animal Fireys and a sausage sizzle.</p>
+  modal(`<div class="logo">Firey<span>Station Tycoon</span></div><p>${S.stb&&S.stb!=='done'?"G'day, Boss! You've got an empty block of land, four keen Aussie animal Fireys and a big dream. First job: build <b>Snag Flats Station</b>.":"G'day, Boss! You've taken over <b>Snag Flats Station</b>: a tired engine bay, four keen Aussie animal Fireys and a sausage sizzle."}</p>
     ${boot.migrated?.fromV4?`<div class="note gold">Welcome to v5! Your town, crew and trophies came across. You now have a ⛺ barracks, a 🔫 cannon and some 🧱 walls. Train crews in ⛺ Army, then hit ⚔️ Attack! for a drill raid.</div>`:boot.migrated?.fromV3?`<div class="note gold">Welcome to v4! Your station, crew and trophies came across, and you now have a town to build around the station. Tap 🔨 Build.</div>`:boot.migrated?.fromV2?`<div class="note gold">Welcome to v3! Your station, coins and trophies came across, and your ${boot.migrated.crew} crew are now Aussie animal Fireys.</div>`:boot.migrated?`<div class="note gold">Thanks for playing v1! Your old progress is now <b>${fmt(boot.migrated.coins)} coins</b> and <b>${boot.migrated.badges} badges</b>.</div>`:''}
     <p>Build your own town around the station, get hands-on at call-outs, save the town when disasters hit, upgrade your station, gear up your crew and beat rival stations at the comps.</p><p class="fine">Fictional game, original art. Not affiliated with any fire service.</p>`,
     [{label:'🚒 Start shift',fn:()=>{ Snd.unlock(); S.nextCallAt=Date.now()+1500; G.save(); }}],'welcome');
@@ -561,7 +564,7 @@ function pDefLog(){ let h=`<div class="infobar">🛡️ Fire waves and firebug g
   if(!S.def.log.length) h+=`<div class="empty">No raids yet. Build a 🔫 Hydrant Cannon and some 🧱 walls before the next wave.</div>`;
   for(const e of S.def.log){ h+=`<div class="dlog ${e.seen?'':'new'}"><div class="ds">${[0,1,2].map(i=>i<e.stars?'⭐':'☆').join('')}</div><div class="dinfo"><b>${e.stars?'Raided':'Defended!'} · ${e.name}</b><br>${e.pct}% damage · 🪙-${fmt(e.lost.coins)} 💧-${e.lost.mats} · 🏆${e.dT>0?'+':''}${e.dT}<br><span class="fine">${fmtTime((Date.now()-e.at)/1000)} ago</span></div><button class="gbtn orange sm" data-act="replay" data-id="${e.id}">▶ Replay</button></div>`; }
   return ['🛡️ Defence log',h]; }
-function handleV5(e){ if(e.stationUp){ Snd.level(); setTimeout(()=>showUnlocks(e.stationUp,e.unlocks),300); } if(e.trained){ trainedN++; if(Date.now()-trainedT>2500){ trainedT=Date.now(); setTimeout(()=>{ if(trainedN){ toast(`✅ ${trainedN>1?trainedN+' troops':WD.TROOPS[e.trained].name} ready`,'good'); Snd.train(); trainedN=0; } },300); } }
+function handleV5(e){ if(e.stBuilt){ Snd.level(); confettiBurst(); toast('🚒 Your Fire Station is open! Next: build the Crew Barracks','gold'); } if(e.stationUp){ Snd.level(); setTimeout(()=>showUnlocks(e.stationUp,e.unlocks),300); } if(e.trained){ trainedN++; if(Date.now()-trainedT>2500){ trainedT=Date.now(); setTimeout(()=>{ if(trainedN){ toast(`✅ ${trainedN>1?trainedN+' troops':WD.TROOPS[e.trained].name} ready`,'good'); Snd.train(); trainedN=0; } },300); } }
   if(e.researched){ Snd.level(); toast(`🧪 ${WD.TROOPS[e.researched].name} is now level ${e.lv}!`,'gold'); }
   if(e.raided){ Snd.alarm(); const en=S.def.log.find(x=>x.id===e.raided); toast(`🔥 A ${en?.name.toLowerCase()||'fire wave'} hit your base: ${en?.stars||0}⭐. Check ⚔️ ▸ Defence log`,'bad'); } }
 function raidFrame(){ if(raid){ renderRaidTop(); if(raid.mode==='fight'){ const k=raid.B.units.filter(u=>u.type==='hero'&&!u.dead&&!u.used).length+'|'+raid.B.units.filter(u=>u.type==='hero'&&u.dead).length; if(k!==raid.abk){ raid.abk=k; renderRaid(); } } } }
@@ -579,8 +582,11 @@ function pStation(){ const st=P.stationStatus(S,G.stationXpNeed(S.level)); let h
     h+=`<div class="sect">Unlocks at Lv ${S.level+1}</div><div class="uchips">${unlockChips(st.next)}</div>`; }
   h+=`<div class="sect">Unlock table</div><div class="utable">${P.UNLOCK_TABLE.map(r=>`<div class="urow ${r.L<=S.level?'have':''} ${r.L===S.level+1?'next':''}"><b>Lv ${r.L}</b><div class="uchips">${unlockChips(r.items.filter(x=>x.kind!=='count'))}</div></div>`).join('')}</div>`;
   return ['🚒 Station',h]; }
-function showUnlocks(L,items){ const list=items||P.unlocksAt(L); closePanel&&closePanel();
-  modal(`<div class="lvlup"><div class="lvburst">⭐</div><h2>Station level ${L}!</h2><p>Your station just ranked up. +5 badges. Here's what's new:</p><div class="uchips big">${unlockChips(list)}</div></div>`,
+function stationBuildPrompt(){ if(S.stb==='building'){ toast('🚧 Your Fire Station is going up. Nearly there!'); return; } closePanel&&closePanel();
+  modal(`<div class="lvlup"><div class="lvburst">🚒</div><h2>Build your Fire Station</h2><p>An empty block, a big dream. Every brigade starts with a station. Then add a Crew Barracks and a Coin Press, recruit a crew and go on your first raid.</p><p><b>Free</b> · ready in 5 seconds</p></div>`,
+    [{label:'🔨 Build it!',fn:()=>{ const e=G.buildStation(); if(e) toast(e); else { Snd.pop(); toast('👷 Builders are on site!'); } after(); }},{label:'Later',cls:'blue'}],'lvlmodal'); }
+function showUnlocks(L,items,o={}){ const list=items||P.unlocksAt(L); closePanel&&closePanel();
+  modal(`<div class="lvlup"><div class="lvburst">⭐</div><h2>${o.title||`Station level ${L}!`}</h2><p>${o.sub||"Your station just ranked up. +5 badges. Here's what's new:"}</p><div class="uchips big">${unlockChips(list)}</div></div>`,
     [{label:'🔨 Go build',fn:()=>{ buildCat='def'; openPanel('build'); }},{label:'Nice!',cls:'blue'}],'lvlmodal'); confettiBurst&&confettiBurst(); }
 function confettiBurst(){ const host=document.body; for(let i=0;i<40;i++){ const c=document.createElement('i'); c.className='conf'; c.style.left=(10+Math.random()*80)+'vw'; c.style.background=['#ffcf33','#e8281e','#29b6f6','#43c443','#ff7a1a'][i%5]; c.style.animationDelay=(Math.random()*.4)+'s'; host.appendChild(c); setTimeout(()=>c.remove(),2600); } }
 $('#slvl').closest('.player').addEventListener('click',()=>openPanel('station'));

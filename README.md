@@ -73,3 +73,10 @@ The shop and the "ad" are DEMO ONLY. Nothing is sold, no ad network is loaded, a
 
 ## v5.2.1
 - Hidden fresh start: open the game with `?fresh=1` to wipe this game's saved data (all `fst*` keys, including tutorial and unlock flags) and start a new Lv1 game. The parameter is then removed from the address bar, so refreshing doesn't wipe again. The normal link is unchanged. Test: `node t521.mjs`.
+
+## v5.3: start from an empty block
+- **New games** (including `?fresh=1`) start on an empty fenced block with a single "FIRE STATION" lot, 600 coins and 60 💧. The tutorial (6 goals) walks the build order: build the Fire Station (free, 5 s), build the Crew Barracks, build a Coin Press (both starter builds take 5 s), recruit 5 Hose Crews, win your first raid, then upgrade the Station to Lv 2.
+- Until the starter builds are done, only the barracks and Coin Press can be built. Then the rest of the Lv1 table opens with a confetti "New buildings unlocked!" popup, and later levels follow the existing unlock table and level-up popups. Call-outs, rush hour and disasters wait until the station exists.
+- **Existing saves** load exactly as before: the station is already built, the town is kept, and an in-progress v5.2 tutorial keeps its old goals.
+- **Late-game bases (Lv7–10)** now get more defences and less random down-levelling, so full late-game armies get fair matches.
+- Tests: `t53.mjs` (new-game playthrough, `?fresh=1`, old saves); screenshots in screens-v53/.
